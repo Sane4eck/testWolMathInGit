@@ -1,0 +1,2384 @@
+In[57]:= ClearAll["Global`*"]
+
+In[58]:=   (* Функция интегрирования методом Рунге-Кутта БЕЗ компиляции*)
+SolRungeKutta4[defRightPart_,y_,t_, h_]:=
+Block[{k1,k2,k3,k4,yNew},
+yNew=y;
+k1=h*defRightPart[t,yNew][[1]];
+k2=h*defRightPart[t+0.5 h,yNew+0.5 k1][[1]];
+k3=h*defRightPart[t+0.5 h,yNew+0.5 k2][[1]];
+k4=h*defRightPart[t+h,yNew+k3][[1]];
+yNew+(1/6)*(k1+2 k2+2 k3+k4)]
+
+In[59]:=  (* Функция интегрирования методом Эйлер*)
+SolEuler[defRightPart_,y_,t_, h_]:=
+Block[{k1},
+k1=h*defRightPart[t,y];
+y+k1]
+
+In[60]:=  (* Функция интегрирования методом Эйлера 2-го порядка*)
+SolEuler2[defRightPart_,y_,t_,h_]:=
+Block[{k1,k2},
+k1=defRightPart[t,y];
+k2=defRightPart[t+h,y+h*k1];
+y+0.5*h*(k1+k2)]
+
+In[61]:=  (* Функция интегрирования модифицированным методом Эйлера 2-го порядка*)
+SolEuler2Modif[defRightPart_,y_,t_,h_]:=
+Block[{k1,k2},
+k1=defRightPart[t,y];
+k2=defRightPart[t+0.5*h,y+0.5*h*k1];
+y+h*k2]
+
+In[62]:= SolRungeAdams[defRightPart_,y_,t_, h_,j_]:=
+Block[{k1,k2,k3,k4, result},
+If[j<= 4,
+k1=h*defRightPart[t,y];
+k2=h*defRightPart[t+0.5 h,y+0.5 k1];
+k3=h*defRightPart[t+0.5 h,y+0.5 k2];
+k4=h*defRightPart[t+h,y+k3];
+result = y+(1/6)*(k1+2 k2+2 k3+k4)];
+If[j>4,
+result = y+h*(55*defRightPart[t,y]-59*defRightPart[t-h,y+h]+37*defRightPart[t-2*h,y+2*h]-9*defRightPart[t-3*h,y+3*h])/24];
+result];
+
+In[63]:=  SIorSGS[var_]:=Block[{},{
+If[var== "SI",
+g0=1;
+\[Delta]P=1;
+\[Delta]Rho=1;
+\[Delta]J=1;
+\[Delta]D=1;
+\[Delta]F=1;
+\[Delta]V=1;
+\[Delta]R=1;
+\[Delta]Jinert=1;
+\[Delta]C=1;
+\[Delta]Rkav=1;
+\[Delta]Torq = 1;
+\[Delta]Cp = 1;];
+If[var== "SGS",
+g0=980.665;
+\[Delta]P=10^(-5)/0.980665;(* коэффициент для перевода Па в кгс/см^2 *)
+\[Delta]Rho=10^-6;                     (* коэффициент для перевода плотности кг/м^3 в удельный вес в кгc/см^3 *)
+\[Delta]J=10^(-2)/980.665;       (* коэффициент для перевода инерционности 1/м в с^2/см^2 *)
+\[Delta]D=10^2;                            (* коэффициент для перевода м в см *)
+\[Delta]F=10^4;                            (* коэффициент для перевода м^2  в см^2 *)
+\[Delta]V=10^6;                            (* коэффициент для перевода м^3  в см^3 *)
+\[Delta]R=100/9.80665;              (* коэффициент для перевода Дж/(кг*К) в кгс*см/(кг*К). Это приближенный перевод. Если точно, то \[Delta]R=100/9.8066 *)
+\[Delta]Jinert=10^4;                 (* коэффициент для перевода инерционности кг*м^2  в кг*см^2 *)
+\[Delta]C=980.665*10^2;                 (* коэффициент для перевода податливости м*с^2  в см/с^2*см^3/cм^2*c^2 *)
+\[Delta]Rkav=10^-4/9.80665;
+\[Delta]Torq = 10^2/9.80665;           (* коэффициент для перевода коэффициентов уравнения кавитационных каверн из Па/(кг*с)в c/см^2 *)
+\[Delta]Cp = 1*10^7;]}]
+
+In[64]:=  funcImport[pathToImportData_,list_, row_,coloumn_]:= Import[pathToImportData,{"Data",list,row,coloumn}];
+
+In[65]:= defPause[iter_, iterInCycle_] := Block[{}, {
+   If[iter && iterInCycle , Print["--------------PPPAAAUUUSSSEEE--------------"]; 
+     Pause[2]];
+   }]
+
+In[66]:= defInterp2D[pathImportKRT_,listNumber_,lastRow_,lastColoumn_,coefRaw_,coefColoumn_]:=Block[{liastData,listRaw,listColoumn},{
+liastData= Transpose[Import[pathImportKRT,{"Data",listNumber,Range[1,lastRow],Range[1,lastColoumn]}]];
+listRaw = Import[pathImportKRT,{"Data",listNumber,Range[1,lastRow],lastColoumn+1}]*coefRaw;
+listColoumn= Import[pathImportKRT,{"Data",listNumber,lastRow+1,Range[1,lastColoumn]}]*coefColoumn;
+ListInterpolation[liastData,{listColoumn,listRaw},InterpolationOrder->1]
+}][[1]]
+
+In[67]:= defLinearLaw[t_,valZero_,valNom_,t1_,t2_]:=Block[{result},
+result=If[t<=t1,valZero,If[t<=t2,valZero+(valNom-valZero)/(t2-t1)*(t-t1),valNom]];
+result]
+
+In[68]:= FuncBasePumpEta[mPumpOut_,rho_,rpm_,coefPumpEta_]:=Block[{qotn},{qotn=mPumpOut/(rho*(10^2)^-3*rpm);coefPumpEta[[1]]*((coefPumpEta[[3]]-qotn)*qotn/(coefPumpEta[[2]]^2-qotn*(2*coefPumpEta[[2]]-coefPumpEta[[3]])))}][[1]];
+FuncBasePumpEta[QtoN_,coefPumpEta_]:=Block[{},{coefPumpEta[[1]]*(coefPumpEta[[3]]-QtoN)*QtoN/(coefPumpEta[[2]]*coefPumpEta[[2]]-QtoN*(2*coefPumpEta[[2]]-coefPumpEta[[3]]))}][[1]]; 
+
+FuncBaseTurbEta[UtoC_,coefPumpEta_]:=Block[{},{coefPumpEta[[1]]*UtoC+coefPumpEta[[2]]*UtoC^2}][[1]]; 
+
+FuncBasePumpH[mPumpOut_,rho_,rpm_,coefPumpDp_]:=Block[{},{coefPumpDp[[1]] *rho*rpm^2+coefPumpDp[[2]] *rpm*mPumpOut+(coefPumpDp[[3]] *mPumpOut^2)/rho}][[1]]; 
+
+
+In[72]:= defTorquePump[pressureOut_,massFlow_,rho_,eta_,rpm_]:=Block[{power,torque},{
+power=(pressureOut*(massFlow/rho))/eta ;
+torque=60/(2*Pi*rpm)*power;
+torque
+}][[1]]
+
+In[73]:= defTorqueTurb[pOut_,pIn_,mTurbNom_,rpmNom_,etaTurbNom_,kGgNom_,RGgNom_,TGgNom_,Dturb_]:=Block[{LadTurbNom,uTurbNom,cadTurbNom,torqTurbNom},{
+LadTurbNom=kGgNom/(kGgNom-1.)*RGgNom*TGgNom*(1.-(pOut/pIn)^((kGgNom-1.)/kGgNom));
+uTurbNom=Pi*Dturb*rpmNom/60.;
+cadTurbNom=Sqrt[2.*g0*LadTurbNom];
+torqTurbNom=60./(2.*Pi*rpmNom)*mTurbNom*LadTurbNom*etaTurbNom ;
+torqTurbNom
+}][[1]]
+
+In[74]:= funcFilling[listVarFlag_, t_,contitionTimeValOpen_,vol_,volNom_,textFoPrint_,resisValNom_,fValMax_,resisPipe1_,resisPipe2_,inertPipe1_,inertPipe2_,p1_,p2_,m_,rho_,funcInterpFval_]:= 
+Block[
+{flagFill,flagValOpen,       (* переменные могут быть изменены и нужны для вычисления других *)
+Dm,Dvol,mJet,mFill,                 (* выходные переменные для дальшейнего использования (производная, производная, струя/прострельный, основной поток) *)
+ratioVol,fVal,resisVal,FL1,FL2,resisPipe,inertPipe  (* служебные переменные *)},
+{
+{flagFill,flagValOpen}=listVarFlag;
+mFill = m;mJet=0;
+{Dm,Dvol}={0,0};
+If[contitionTimeValOpen,(* только True *)
+	ratioVol =vol/volNom;
+If[Im[ratioVol]>0,ratioVol=0];
+	If[ratioVol< 0,ratioVol = 0;Dvol=0];      (* Dvol - производная заполняемого объема окислителя в трубе на КС *)
+	If[flagFill== 0  && ratioVol> 1,ratioVol = 1; flagFill=1; Print[textFoPrint,t//N, " секунде"]];
+	fVal=funcInterpFval[t];
+	If[fVal<=  0,fVal= 1*10^-10];
+	resisVal =resisValNom*(fValMax/fVal)^2;                (* Активные потери на клапане *) 
+	FL1 = ratioVol^0.1;                     (* Функция роста активных и инерционных потерь давления в заполняемом тракте *)
+	resisPipe= resisPipe1 + resisVal+FL1*resisPipe2+1*10^-20;           (* Активные потери в тракте *)
+	inertPipe= inertPipe1+FL1*inertPipe2+1*10^-20;              (* Инерционные потери в тракте*)
+	
+If[flagValOpen==  1,          (* Маркер степени открытия клапана. Здесь текущие гидравлические потери в заполняемой трубе превышают потери при полностью открытом клапане не более, чем в 100 раз*)
+	(* True *)
+	     Dm = (p1-p2-resisPipe/rho*Abs[mFill]*mFill)/inertPipe;(* Dm - производная расхода *) ,
+
+	(* False *)
+	     Dm = 0; (* Dm - производная расхода *)
+	     mFill = ((p1-p2)/resisPipe*rho)^0.5 ;(* Пока сопротивление трубы еще большое, т.е. (resisPipe/resisPipeNom)>100 или resisPipe/resisPipeNom>1000, сохраняем значение текущего расхода во временной переменной mFill для того, чтобы передать его в основную программу, т.к. в этом случае значение получено не из решения дифференциального уравнения, а присвоено директивно  *);
+	     If[resisPipe< 100*(resisPipe1 +resisValNom+FL1*resisPipe2),flagValOpen= 1,flagValOpen= 0] (*  *)];
+	
+If[flagFill ==  1, (* Если трубопровод уже заполнен *)
+	(* True *)
+          Dvol= 0; (* Dvol - производная заполняемого объема окислителя в трубе на КС *)
+          mJet= mFill,(* расход окислителя через форсунки КС равен расходу через трубу - через форсунки идет весь расход *)
+
+	(* False *)
+        (* Если трубопровод ещё не заполнен*)
+	FL2 = 1-0.98*ratioVol^4; (* Функция заполнения тракта окислителя *)
+	Dvol = (mFill*FL2 )/rho; (* Dm - производная расхода окислителя на КС - одна часть окислителя m*FL2 идет на заполнение *) 
+	mJet= mFill*(1-FL2) (* другая часть окислителя m*(1-FL2) идет через форсунки *)],
+
+If[mFill<= 0,mFill=0];
+	mJet = mFill;];
+Dm = If[Im[Dm]!=0,0,Dm];
+Dvol = If[Im[Dvol]!=0,0,Dvol];
+{flagFill,flagValOpen,Dm,Dvol,mFill,mJet}
+}][[1]]
+
+In[75]:= funcFillingNoValve[listVarFlag_, t_, contitionTimeValOpen_, vol_, volNom_, 
+  textFoPrint_, resisPipe2_, inertPipe2_, p1_, p2_, m_, rho_] := 
+ Block[
+   {flagFill, flagValOpen,       (* 
+    переменные могут быть изменены и нужны для вычисления других *)
+    Dm, Dvol, mJet, mFill,                 (* 
+    выходные переменные для дальшейнего использования (производная, 
+    производная, струя/прострельный, основной поток) *)
+    ratioVol, FL1, FL2, resisPipe, inertPipe  (* служебные переменные *)},
+   {
+    {flagFill, flagValOpen} = listVarFlag;
+    mFill = m; mJet = 0;
+    {Dm, Dvol} = {0, 0};
+    If[contitionTimeValOpen,(* только True *)
+     	ratioVol = vol/volNom;
+     If[Im[ratioVol] > 0, ratioVol = 0];
+     	If[ratioVol < 0, ratioVol = 0; Dvol = 0];      (* Dvol - 
+     производная заполняемого объема окислителя в трубе на КС *)
+     	If[flagFill == 0  && ratioVol > 1, ratioVol = 1; flagFill = 1; 
+      Print[textFoPrint, t // N, " секунде"]];
+     	FL1 = ratioVol^0.1;                     (* 
+     Функция роста активных и инерционных потерь давления в заполняемом тракте\
+ *)
+     	resisPipe = FL1*resisPipe2 + 1*10^-20;           (* 
+     Активные потери в тракте *)
+     	inertPipe = FL1*inertPipe2 + 1*10^-20;              (* 
+     Инерционные потери в тракте*)
+     	
+     If[flagValOpen ==  1,          (* Маркер степени открытия клапана. 
+      Здесь текущие гидравлические потери в заполняемой трубе превышают потери\
+ при полностью открытом клапане не более, чем в 100 раз*)
+      	(* True *)
+      	     Dm = (p1 - p2 - resisPipe/rho*Abs[mFill]*mFill)/inertPipe;(* Dm - 
+      производная расхода *) ,
+      
+      	(* False *)
+      	     Dm = 0; (* Dm - производная расхода *)
+      	     mFill = ((p1 - p2)/resisPipe*rho)^0.1 ;(* 
+      Пока сопротивление трубы еще большое, т.е. (resisPipe/resisPipeNom)>
+      100 или resisPipe/resisPipeNom>1000, 
+      сохраняем значение текущего расхода во временной переменной mFill для то\
+го, чтобы передать его в основную программу, т.к. 
+      в этом случае значение получено не из решения дифференциального уравнени\
+я, а присвоено директивно  *)];
+     	
+     If[flagFill ==  1, (* Если трубопровод уже заполнен *)
+      	(* True *)
+                Dvol = 0; (* Dvol - 
+      производная заполняемого объема окислителя в трубе на КС *)
+                mJet = mFill,(* 
+      расход окислителя через форсунки КС равен расходу через трубу - 
+      через форсунки идет весь расход *)
+      
+      	(* False *)
+              (* Если трубопровод ещё не заполнен *)
+      	FL2 = 1 - 0.98*ratioVol^1; (* Функция заполнения тракта окислителя *)
+      	Dvol = (mFill*FL2 )/rho; (* Dm - производная расхода окислителя на КС - 
+      одна часть окислителя m*FL2 идет на заполнение *) 
+      	mJet = mFill*(1 - FL2) (* другая часть окислителя m*(1-
+      FL2) идет через форсунки *)],
+     
+     If[mFill <= 0, mFill = 0];
+     	mJet = mFill;];
+    {flagFill, Dm, Dvol, mFill, mJet}
+    }][[1]]
+
+In[76]:= funcFilling[listVarFlag_, t_, contitionTimeValOpen_, vol_, volNom_, 
+  textFoPrint_, resisValNom_, fValMax_, resisPipe1_, resisPipe2_, inertPipe1_,
+   inertPipe2_, p1_, p2_, m_, rho_, funcInterpFval_, front_, power_] := 
+ Block[
+   {flagFill, flagValOpen,       (* 
+    переменные могут быть изменены и нужны для вычисления других *)
+    Dm, Dvol, mJet, mFill,                 (* 
+    выходные переменные для дальшейнего использования (производная, 
+    производная, струя/прострельный, основной поток) *)
+    ratioVol, fVal, resisVal, FL1, FL2, resisPipe, inertPipe  (* 
+    служебные переменные *)},
+   {
+    {flagFill, flagValOpen} = listVarFlag;
+    mFill = m; mJet = 0;
+    {Dm, Dvol} = {0, 0};
+    If[contitionTimeValOpen,(* только True *)
+     	ratioVol = vol/volNom;
+     If[Im[ratioVol] > 0, ratioVol = 0];
+     	If[ratioVol < 0, ratioVol = 0; Dvol = 0];      (* Dvol - 
+     производная заполняемого объема окислителя в трубе на КС *)
+     	If[flagFill == 0  && ratioVol >= 1, ratioVol = 1; flagFill = 1; 
+      Print[textFoPrint, t // N, " секунде"]];
+     	fVal = funcInterpFval[t];
+     	If[fVal <=  0, fVal = 1*10^-10];
+     	resisVal = resisValNom*(fValMax/fVal)^2;                (* 
+     Активные потери на клапане *) 
+     	FL1 = ratioVol^0.1;                     (* 
+     Функция роста активных и инерционных потерь давления в заполняемом тракте\
+ *)
+     	resisPipe = 
+      resisPipe1 + resisVal + FL1*resisPipe2 + 1*10^-20;           (* 
+     Активные потери в тракте *)
+     	inertPipe = inertPipe1 + FL1*inertPipe2 + 1*10^-20;              (* 
+     Инерционные потери в тракте*)
+     	
+     If[flagValOpen ==  1,          (* Маркер степени открытия клапана. 
+      Здесь текущие гидравлические потери в заполняемой трубе превышают потери\
+ при полностью открытом клапане не более, чем в 100 раз*)
+      	(* True *)
+      	     Dm = (p1 - p2 - resisPipe/rho*Abs[mFill]*mFill)/inertPipe;(* Dm - 
+      производная расхода *) ,
+      
+      	(* False *)
+      	     Dm = 0; (* Dm - производная расхода *)
+      	     mFill = ((p1 - p2)/resisPipe*rho)^0.5 ;(* 
+      Пока сопротивление трубы еще большое, т.е. (resisPipe/resisPipeNom)>
+      100 или resisPipe/resisPipeNom>1000, 
+      сохраняем значение текущего расхода во временной переменной mFill для то\
+го, чтобы передать его в основную программу, т.к. 
+      в этом случае значение получено не из решения дифференциального уравнени\
+я, а присвоено директивно  *);
+      	     
+      If[resisPipe < 100*(resisPipe1 + resisValNom + FL1*resisPipe2), 
+       flagValOpen = 1, flagValOpen = 0] (*  *)];
+     	
+     If[flagFill ==  1, (* Если трубопровод уже заполнен *)
+      	(* True *)
+                Dvol = 0; (* Dvol - 
+      производная заполняемого объема окислителя в трубе на КС *)
+                mJet = mFill,(* 
+      расход окислителя через форсунки КС равен расходу через трубу - 
+      через форсунки идет весь расход *)
+      
+      	(* False *)
+              (* Если трубопровод ещё не заполнен*)
+      	FL2 = 1 - 0.98*ratioVol^power; (* 
+      Функция заполнения тракта окислителя *)
+      If[front == 0, Dvol = mFill/rho; mJet = mFill*(1 - FL2)];
+      (* Dm - производная расхода окислителя на КС - одна часть окислителя m*
+      FL2 идет на заполнение *) 
+      If[front == 1, Dvol = (mFill*FL2 )/rho; mJet = mFill*(1 - FL2) ];
+      	 (* другая часть окислителя m*(1-FL2) идет через форсунки *)],
+     
+     If[mFill <= 0, mFill = 0];
+     	mJet = mFill;];
+    Dm = If[Im[Dm] != 0, 0, Dm];
+    Dvol = If[Im[Dvol] != 0, 0, Dvol];
+    {flagFill, flagValOpen, Dm, Dvol, mFill, mJet}
+    }][[1]]
+
+In[77]:= funcResisOtVolume[flagFillInput_, m_, rho_, vol_, volNom_, resisPipe_, 
+  inertPipe_, txtPrint_, front_] := 
+ Block[
+          {
+    ratioVol, FL1, FL2, resis, inert, Dvol, flagFill
+    },
+   {
+    flagFill = flagFillInput;
+                {ratioVol} = {vol/volNom};
+      (*If[Im[ratioVol]>0,ratioVol=0];*)
+    	   If[ratioVol < 0, ratioVol = 0];
+    	   FL1 = ratioVol^0.1;                     (* 
+    Функция роста активных и инерционных потерь давления в заполняемом тракте \
+*)
+    	   resis = FL1*resisPipe + 1*10^-20;           (* 
+    Активные потери в тракте *)
+    	   inert = FL1*inertPipe + 1*10^-20;              (* 
+    Инерционные потери в тракте*)
+    	If[flagFill == 0  && ratioVol >=  1, ratioVol = 1; flagFill = 1; 
+     Print[txtPrint, t // N, " секунде"]];
+    If[flagFill ==  1, (* Если трубопровод уже заполнен *)
+     	(* True *)
+               Dvol = 0; (* Dvol - 
+     производная заполняемого объема окислителя в трубе на КС *),
+     
+     	(* False *)
+             (* Если трубопровод ещё не заполнен *)
+     	FL2 = 1 - 0.98*ratioVol^4; (* Функция заполнения тракта *)
+     If[front == 0, Dvol = m/rho];
+     If[front == 1, Dvol = (m*FL2 )/rho]; (* Dm - 
+     производная расхода окислителя на КС - одна часть окислителя m*
+     FL2 идет на заполнение *) ];
+    
+    {Dvol, resis, inert, flagFill}
+    }][[1]]
+
+In[78]:= funcResisOtVolume[vol_, volNom_, resisPipeNom_, power_] := 
+ Block[
+          {
+    ratioVol, FL1, resis
+    },
+   {
+                ratioVol = Max[vol/volNom, 0];
+    	   FL1 = ratioVol^power;                     (* 
+    Функция роста активных и инерционных потерь давления в заполняемом тракте \
+*)
+    	   resis = FL1*resisPipeNom + 1*10^-20;           (* 
+    Активные потери в тракте *)
+    
+    resis
+    }][[1]]
+
+In[79]:= funcInertOtVolume[vol_, volNom_, inertPipeNom_, power_] := 
+ Block[
+          {
+    ratioVol, FL1, inert
+    },
+   {
+                ratioVol = Max[vol/volNom, 0];
+    	   FL1 = ratioVol^power;                     (* 
+    Функция роста активных и инерционных потерь давления в заполняемом тракте \
+*)
+    	   inert = FL1*inertPipeNom + 1*10^-20;              (* 
+    Инерционные потери в тракте*)
+    
+    inert
+    }][[1]]
+
+In[80]:= funcFillPipe[flagFillInput_, vol_, volNom_, m_, rho_, txtPrint_, front_] := 
+ Block[
+          {
+    FL2, Dvol, flagFill, ratioVol
+    },
+   {
+    flagFill = flagFillInput;
+                ratioVol = Max[vol/volNom, 0];
+    	If[flagFill == 0  && ratioVol >=  1, ratioVol = 1; flagFill = 1; 
+     Print[txtPrint, t // N, " секунде"]];
+    If[flagFill ==  1, (* Если трубопровод уже заполнен *)
+     	(* True *)
+               Dvol = 0; (* Dvol - 
+     производная заполняемого объема окислителя в трубе на КС *),
+     
+     	(* False *)
+             (* Если трубопровод ещё не заполнен *)
+     	FL2 = 1 - 0.98*ratioVol^4; (* Функция заполнения тракта *)
+     If[front == 0, Dvol = m/rho];
+     If[front == 1, Dvol = (m*FL2 )/rho]; (* Dm - 
+     производная расхода окислителя на КС - одна часть окислителя m*
+     FL2 идет на заполнение *) ];
+    
+    {Dvol, flagFill}
+    }][[1]]
+
+In[81]:= (* Кавітація з відключеним принтом для завтосування в розрахунках *)
+defCavitation[DKSI_,massFlowInput_,P1Input_,linearModel_,dAugerOuterInput_,dHubAugerInput_,DTPInput_,rpm_,Nn_,S_,rhoInput_,ALInput_,Z_,PSInput_]:=
+defCavitationBase [DKSI,massFlowInput,P1Input,linearModel,dAugerOuterInput,dHubAugerInput,DTPInput,rpm,Nn,S,rhoInput,ALInput,Z,PSInput,False]
+
+In[82]:=  FKL[f1_,f2_,t1_,t2_,dt1_,dt2_,t_]:=
+Block [{f},If[t<t1||t>=t2+dt2, f=f1];
+If[t1<=t<(t1+dt1), f=f1+(f2-f1)*(t-t1)/dt1];
+If[(t1+dt1)<=t<t2, f=f2];
+If[t2<=t<(t2+dt2), f=f2-(f2-f1)*(t-t2)/dt2];
+f]
+
+In[83]:= defMyValves[cyclogramValveDict_]:=Block[{},
+{
+Do[
+Set[Evaluate[Symbol["t"<>i<>"1"]]    ,cyclogramValveDict[i][[1]]];
+Set[Evaluate[Symbol["dt"<>i<>"1"]]  ,cyclogramValveDict[i][[2]]];
+Set[Evaluate[Symbol["t"<>i<>"2"]]    ,cyclogramValveDict[i][[3]]];
+Set[Evaluate[Symbol["dt"<>i<>"2"]]  ,cyclogramValveDict[i][[4]]];
+Set[Evaluate[Symbol["a"<>i<>"Max"]],cyclogramValveDict[i][[5]]*\[Delta]F];
+Set[Evaluate[Symbol["a"<>i<>"Min"]],cyclogramValveDict[i][[6]]*\[Delta]F];
+Set[Evaluate[Symbol["mu"<>i]]          ,cyclogramValveDict[i][[7]]];
+,{i,Keys[cyclogramValveDict]}];
+}][[1]]
+
+In[84]:=  GGAZ[P1_,P2_,Mu_, F_,T1_, k_,R_]:=Block[ {PIcrit,PI,GG,g0},
+ If[P1>10^4,g0=1,g0=980.665];
+PI = P2/P1;
+PIcrit = (2/(k+1))^(k/(k-1));
+	If[P1>P2,	      
+	  If[PI < PIcrit,PI = PIcrit];		
+	  GG=P1*Mu*F*\[Sqrt]((g0*(2 k )/(R T1(k-1)))((PI)^(2/k)-(PI)^((k+1)/k))),
+
+	  GG=0];GG];
+
+In[85]:=  FuncDpTurbOut[k_,p1_,p2_,q_]:=
+Block[{f,PI,df,c},
+PI=p2/p1;
+f=((k+1)/2)^(2/(k-1))*(k+1)/(k-1)*(PI^(2/k)-PI^((k+1)/k))-q^2;
+df=((k+1)/2)^(2/(k-1))*(k+1)/(k-1)*(2/k*PI^(2/k-1)-(k+1)/k*PI^((k+1)/k-1));
+c=df/p1;
+-f/c]
+
+In[86]:=  defCheckCritNozzle[P1_,P2_, k_]:=Block[ {PIcrit,PI,GG,g0,return},
+ If[P1>10^4,g0=1,g0=980.665];
+PI = P2/P1;
+PIcrit = (2/(k+1))^(k/(k-1));
+If[PI < PIcrit,return = True, return = False];		
+return];
+
+In[87]:=  FuncQ[k_,p1_,p2_]:=Block[{q},
+q=((k+1)/2)^(1/(k-1))*Sqrt[(k+1)/(k-1)*((p2/p1)^(2/k)-(p2/p1)^((k+1)/k))]]
+
+In[88]:= defCompCavPump[pltLabel_,rangePressure_,rangeMassFlow_,interpRho_,defCavitation_,TTank_,DKSI_,liniarModel_,dAugerOuterPump_,dHubAugerPump_,dPipeInPump_,rpm_,nPump_,pitchPump_,lengthAugerPump_,numAugerBladesPump_,pressureVapor_,pltRange_,minCompCavPump_]:= Block[{compPump,rho,B1,B2,pCp,qab,TK,J,coefH,QAB,dictCompCavFu,nameListColor},{
+
+dictCompCavFu = <||>;
+nameListColor={};
+Do[
+compPump= Reap[Do[
+rho = interpRho[pressure,TTank];
+{B1,B2,pCp,qab,TK,J,coefH,QAB}=defCavitation [DKSI,massFlow,pressure,liniarModel,dAugerOuterPump,dHubAugerPump,dPipeInPump,rpm,nPump,pitchPump,rho,lengthAugerPump,numAugerBladesPump,pressureVapor];
+Sow[-rho/B1]
+,{pressure,rangePressure}]][[2,1]];
+dictCompCavFu["massFlow_"<>ToString[massFlow]<>"_kg/s"]=Transpose[{rangePressure,compPump}],{massFlow,rangeMassFlow}];
+
+Do[AppendTo[nameListColor,RGBColor[i,0,0.5]],{i,0,1,1/Length[rangeMassFlow]}];
+
+Show[ListLinePlot[Values[dictCompCavFu],PlotLegends->Keys[dictCompCavFu],PlotStyle-> nameListColor, Frame->True,PlotRange-> pltRange,FrameLabel->{"pressure","compliance"},PlotLabel->pltLabel],
+ListLinePlot[{{rangePressure[[1]],minCompCavPump},{rangePressure[[-1]],minCompCavPump}},PlotStyle->Red]]
+}][[1]]
+
+In[89]:= defMixParametersOut [listM_List,listK_List,listR_List,listT_List,listCp_List]:=Block[{msum,CpTotal,Toutput,koutput,Routput},
+{msum = Total[listM];
+CpTotal = Total[listM*listCp]/ msum;
+Toutput = Total[listM*listCp*listT]/ (msum * CpTotal);
+koutput = Total[listK*listM]/msum;
+Routput = Total[listR*listM]/msum;
+{koutput,Routput,Toutput}//N}][[1]]
+
+In[90]:= defCreateDict[listVarStr_]:=Block[{dictBase,dictResult,listVar},{
+listVar=StringSplit[listVarStr,","];
+dictBase = Reap[Do[Sow["\""<>i<>"\""<>"->"<>If[StringTake[i,1]== "p",i<>"*\!\(\*SuperscriptBox[\(10\), \(-5\)]\)",i]<>","],{i,listVar}]][[2,1]];
+dictResult ="<|"<>"\"1_time\"\[Rule]TIME,\"2_j\"\[Rule]j,"<>dictBase<>"\"z_time\"\[Rule]TIME,\"z_j\"\[Rule]j"<>"|>";
+dictResult
+}][[1]];
+
+In[91]:= defDictForPrint[DictForSaveResultsTXT_]:=Block[{dict},{ 
+dict =ToExpression[DictForSaveResultsTXT];
+dict}][[1]];
+
+In[92]:= funcPSpltNoComp[p1_,p2_,p3_,rho_,inert1x_,inert2x_,inertx2_,resist1x_,resist2x_,resistx2_]:=Block[{px},{
+px = (inert2x inertx2 (resist1x-p1 rho)+inert1x inertx2 (resist2x-p2 rho)+inert1x inert2x (resistx2+p3 rho))/((inert1x inert2x-(inert1x+inert2x) inertx2) rho);
+px
+}][[1]]
+
+In[93]:= funcPSpltNoComp2[p1_,p2_,m1_,m2_,rho_,inert1x_,inertx2_,resist1x_,resistx2_]:=Block[{px},{
+px = (-inertx2 p1 rho+inert1x p2 rho+inertx2 m1 resist1x Abs[m1]+inert1x m2 resistx2 Abs[m2])/((inert1x-inertx2) rho);
+px
+}][[1]]
+
+In[94]:= defNamePipes[listNode_] := Block[{Dm, resis, m, inert, rho, name}, {
+     name = 
+      Reap[Do[Sow[{ToString[listNode[[i, 1]]] <> "To" <> 
+            ToString[listNode[[i, 2]]] <> ToString[listNode[[i, 3]]]}[[
+          1]]], {i, Length[listNode]}]];
+     name[[2, 1]]}][[1]];
+
+In[95]:= defCreateEquation[listNameTXTnodes_, typeEquation_] := 
+  Block[{result, equation, name1, name2, component, nameVar, resis, m, inert, 
+     Dm, rho, p1, p2, elif, name, nameMassFlow}, {
+     result = Reap[Do[
+          name1 = ToString[i[[1]]];
+          name2 = ToString[i[[2]]];
+          component = ToString[i[[3]]];
+          nameMassFlow = ToString[i[[4]]];
+          
+          nameVar = name1 <> "To" <> name2 <> component;
+          resis = "resis" <> nameVar;
+          m = "m" <> nameMassFlow <> component;
+          inert = "inert" <> nameVar;
+          Dm = "Dm" <> nameVar;
+          rho = "rho" <> component;
+          
+          elif = (name  == "Ch" || name == "Gg" || name == "TrbIn" || 
+             name == "TrbOut" );
+          
+          p1 = If[elif /. name -> name1, "p" <> name1, 
+            If[name1 == "Tnk", "p" <> name1 <> component, 
+             If[IntegerQ[
+                name1 // ToExpression] || (StringLength[name1] >= 3 && 
+                 StringTake[name1, 3] == "Amp"), "p" <> name1 <> component, 
+              "p" <> name1 <> "Out" <> component]]];
+          
+          p2 = If[elif /. name -> name2, "p" <> name2, 
+            If[name2 == "Tnk", "p" <> name2 <> component, 
+             If[IntegerQ[
+                name2 // ToExpression] || (StringLength[name2] >= 3 && 
+                 StringTake[name2, 3] == "Amp"), "p" <> name2 <> component, 
+              "p" <> name2 <> "In" <> component]]];
+          (*p1 = If[elif/.name\[Rule]name1, "p"<>name1,"p"<>name1<>"In"<>
+          component];
+          p2 = If[elif/.name\[Rule] name2, "p"<>name2,"p"<>name1<>"Out"<>
+          component];*)
+          
+          If[name2 == "Cool" || name2 == "FilmCool", p2 = "pCh"];
+          
+          If[typeEquation == "Dm",
+           
+           equation = 
+             Dm <> " =((" <> p1 <> "-" <> p2 <> "-" <> resis <> "/" <> rho <> 
+              " * Abs[" <> m <> "]* " <> m <> ")/" <> inert <> ")";];
+          If[typeEquation == "resis",
+            
+           equation = 
+            resis <> " =((" <> p1 <> "-" <> p2 <> ")*" <> rho <> "/" <> m <> 
+             "^2)"];
+          
+          Sow[equation];
+          , {i, listNameTXTnodes}];][[2]];
+     result
+     }][[1, 1]];
+
+In[96]:= defCreateEquationValve[listNameTXTnodes_] := 
+ Block[{result, equation, component, nameVar, resis, m, inert, Dm, rho, p1, 
+    p2, elif, name}, {
+    result = Reap[Do[
+         name = ToString[i[[1]]];
+         m = ToString[i[[2]]];
+         component = ToString[i[[3]]];
+         
+         resis = "resis" <> "Val" <> name <> component <> "Nom";
+         rho = "rho" <> component;
+         p1 = "p" <> name <> "In" <> component;
+         p2 = "p" <> name <> "Out" <> component;
+         
+          
+         equation = 
+          resis <> " =((" <> p1 <> "-" <> p2 <> ")*" <> rho <> "/" <> m <> 
+           "^2)";
+         
+         Sow[equation];
+         , {i, listNameTXTnodes}];][[2]];
+    result
+    }][[1, 1]]
+
+In[97]:= funcResisTV01Fu[t_, option_] := Block[{result}, {
+    If[option == "Nom", result = (pTV01InFu - pTV01OutFu)*rhoFu/mPmp2ToGgFu^2];
+    If[option == "Time", result = "funcResisTV01Fu"];
+    result
+    }][[1]]
+funcResisTV01Fu[1, "Nom"];
+
+In[99]:= defEqIn[node1_, node2_, rho_] := Block[{result, name, a , j, m, pin, pout}, {
+    name = node1 <> node2;
+    a = "a" <> name;
+    j =  "j" <> name;
+    m = "m" <> name;
+    pin = "p" <> node1;
+    pout = "px";
+    result = 
+     "(" <> pin <> "-" <> pout <> "-" <> a <> "/" <> ToString[rho] <> "*m" <> 
+      ToString[name] <> "^2)/" <> j ;
+    result
+    }][[1]]
+
+In[100]:= defEqOut[node1_, node2_, rho_] := Block[{result, name, a , j, m, pin, pout}, {
+    name = node1 <> node2;
+    a = "a" <> name;
+    j =  "j" <> name;
+    m = "m" <> name;
+    pin = "px";
+    pout = "p" <> node2;
+    result = 
+     "(" <> pin <> "-" <> pout <> "-" <> a <> "/" <> ToString[rho] <> "*m" <> 
+      ToString[name] <> "^2)/" <> j ;
+    result
+    }][[1]]
+
+In[101]:= defsisBalanseDm[nameIn_, namePx_, nameOut_, rho_] := 
+ Block[{result, InEq, OutEq, InPart, OutPart, systemEquation, resultSolution, 
+    resultFunc, nameX}, {
+    nameX = "p" <> namePx;
+    InEq = {};
+    OutEq = {};
+    Do[AppendTo[InEq, defEqIn[i, namePx, rho]], {i, nameIn}];
+    Do[AppendTo[OutEq, defEqOut[namePx, j, rho]], {j, nameOut}];
+    InPart = "";
+    OutPart = "";
+    Do[InPart = InPart <> "+" <> i, {i, InEq}];
+    Do[OutPart = OutPart <> "+" <> j, {j, OutEq}];
+    systemEquation = InPart <> " \[Equal] " <> OutPart;
+    resultSolution = Solve[systemEquation // ToExpression, {px}];
+    resultFunc = resultSolution[[1, 1, 2]];
+    resultFunc
+    }][[1]]
+
+In[102]:= soundSpeed[CO_,rho_,D_,DEL_,EME_,EPS0_]:= Block[{EO,Vsound, g},{
+g = 981;
+EO = rho/g*CO^2;
+Vsound = 1/Sqrt[rho/g*(1/EO+EPS0+D/(DEL*EME))](*Sound Speed*);
+Vsound}][[1]]
+
+In[103]:= CHSH[GAM_,AL_]:=Block[{CH,SH},{
+CH = 1/2 (Exp[GAM*AL]+Exp[-GAM*AL]);
+SH = 1/2 (Exp[GAM*AL]-Exp[-GAM*AL]);
+{CH,SH}
+}][[1]];
+
+In[104]:= forPolusnick[OM_,G_,AL_,  rho_,CC_, D_,DEL_, EME_, DP_,CHSH_]:= Block[{S,FTP,EGI,C2,DPOT,ZGI,YGI,GAM,ZB,CH,SH,g,BD},{
+BD={{0,0},{0,0}};
+g=981;
+S = OM*I;     (* Переменная Лапласа *)
+FTP = (Pi D^2)/4;(*Площадь проходного сечения*)
+EGI = (rho*CC^2)/g;(*Модуль объёмной упругости жидкости*)
+C2 = CC^2/(1+D/DEL*EGI/EME);(*Квадрат скорости звука ----------*)
+If[G<1*10^-8,DPOT = 0, DPOT = 2*DP*(g*FTP)/AL/G];(*Если расход близок к нулю или меньше, то приведенный 
+коэффициент линейного трения на единицу длины магистрали равен 0*)
+ZGI = (S+DPOT)/(g*FTP);(*Гидравлический последовательный импеданс единицы длины магистрали*)
+YGI = S/C2*(g*FTP);(*Параллельный адмиттанс единицы длины магистрали*)
+GAM = Sqrt[ZGI*YGI](*Комплексная «постоянная» распространения волн на единицу длины магистрали*);
+ZB = Sqrt[(ZGI/YGI)](*Волновое сопротивление магистрали*);
+
+{CH,SH} = CHSH[GAM, AL];(*Расчет гиперболический косинусов и синусов комплексной постоянной распостранения волн на единицу магистрали*)
+BD[[1,1]] = CH;(* Елементы четырёхполюсника*)
+BD[[1,2]] = -SH*ZB;
+BD[[2,1]] = -SH/ZB;
+BD[[2,2]] = BD[[1,1]];
+BD
+}][[1]]
+
+In[105]:= modulePhaseDetection[WW_]:=Block[{RE,DI, AM,FAZ },{
+RE = Re[WW];
+DI = Im[WW]; 
+AM = Sqrt[RE*RE+DI*DI];
+If[Abs[RE]<1*10^-9,If[DI>= 0, FAZ = 1.57, FAZ = -1.57],FAZ = ArcTan[DI/RE]];
+FAZ}][[1]]//N
+
+In[106]:= (*Расход жидкости*)
+FLUID[P1_,P2_,Mu_, F_,rho_,Pvap_]:=Block[ {G},
+If[P1<0, P1=Pvap];
+If[P2<0, P2=Pvap];
+	If[
+	P1>P2,	      
+	  If[P2 >P1/2,
+               G=Mu*F*Sqrt[2*rho*(P1-P2)],
+               G=Mu*F*Sqrt[2*rho*P1]],
+          If[P1>P2/2,
+                G=-Mu*F*Sqrt[2*rho*(P2-P1)],
+                G=-Mu*F*Sqrt[2*rho*P2]]		
+	        ];	        
+
+             If[P1==P2,
+                 G=0.
+                ];
+G
+ ];
+
+In[107]:= FTREN[SILA_,RTR_,F3_, C3_,DY_]:=Block[ {FT},
+If[-10^-5<DY<=10^-5,
+ FT=If[SILA>=0.,RTR,-RTR],
+FT=If[DY>=0.,F3,-F3]+C3*DY
+];
+FT
+ ];
+
+In[108]:= OGR[DY_,Y_,YK_]:={
+Dx=DY;
+x=Y;
+If[Y>=YK,x=YK;If[DY>0.,Dx=0.]];
+If[Y<=0.,x=0.;If[DY<0.,Dx=0.]];
+x,Dx
+ };
+
+In[109]:= SuondSpeed[rho_,Dtr_,\[Delta]_, Eliq_,Ewall_]:=Block[ {a},
+a=Sqrt[ Eliq/(rho*(1+Dtr*Eliq/(\[Delta]*Ewall)))];
+a
+ ];
+
+In[110]:= PPS[p0_,p1_,t0_,t1_,t2_,t3_,t_]:=
+Block [{p},If[t<t0||t>=t3, p=p0];
+If[t0<=t<t1, p=p0+(p1-p0)*(t-t0)/(t1-t0)];
+If[t1<=t<t2, p=p1];
+If[t2<=t<t3, p=p1-(p1-p0)*(t-t2)/(t3-t2)];
+p];
+
+In[111]:= funcCheckValve[p1_,p2_,u_,x_,xFlapMax_,fGapBodyFlap_,fFlapExter_,diamSeat_,silaSpring0_,zSpring_,myuThrot_,fSeat_,silaFrictStatic_,silaFrictKinetic_,coefPropFrictViscous_,masMovingParts_,FTREN_,coefSilaFlow_]:=Block[{fGap,fThrot,silaSpring,silaFlow,sila,silaFrict,D2x,Du,Dx,fSeatNew,x1,x2,myuThrot1,myuThrot2,px},
+{
+(* Вар_#1 *)
+x2=Solve[Pi*diamSeat*xx == fGapBodyFlap, xx][[1,1,2]];
+x1=0;
+myuThrot1=0.8;myuThrot2=0.8;
+px=(myuThrot1^2*(Pi*diamSeat*x)^2*p1+myuThrot2^2*fGapBodyFlap^2*p2)/(myuThrot1^2*(Pi*diamSeat*x)^2+myuThrot2^2*fGapBodyFlap^2);
+fGap=Pi*diamSeat*x;(* Площадь зазора между клапаном и седлом *)
+fSeatNew=If[x<=x1, fSeat,If[x1<x<= x2,fSeat+((fFlapExter-fSeat)/(x2-x1))*(x-x1),fFlapExter]];
+fSeatNew=fFlapExter;
+fThrot=If[fGap<fGapBodyFlap,fGap,fGapBodyFlap];(* Дросселирующая площадь *)
+
+silaSpring=silaSpring0+zSpring*x;(* Сила пружины клапана *)
+silaFlow=2.*myuThrot*fGap*((*p1*)px-p2)*Cos[69.*Pi/180.]*coefSilaFlow;(* Гидродинамическая сила, действующая на тарель клапана *)
+sila=p1*fSeat-p2*fFlapExter+px*(fFlapExter-fSeat)-silaSpring; (* Равнодействующая сил *)
+silaFrict=FTREN[sila,silaFrictStatic,silaFrictKinetic, coefPropFrictViscous,0];
+D2x=(sila-silaFrict)/masMovingParts;
+Du=D2x;
+Dx=u;
+If[fThrot<= 0, fThrot=1*10^-10];
+Dx,Du,fThrot
+}]
+
+In[112]:= funcCheckValveCalcResisOtX[x_,diamSeat_,fGapBodyFlap_,coefCorectivResis_]:=Block[{dx,fGap,fThrot,resis},
+{
+dx=0(*0.1*10^-3*);(* Деформация фторопласта *)
+If[x<=dx, fGap=0, fGap=Pi*diamSeat*(x - dx)];(* Площадь зазора между клапаном и седлом *)
+If[fGap<fGapBodyFlap,fThrot=fGap,fThrot=fGapBodyFlap];(* Дросселирующая площадь *)
+If[fThrot<= 0, fThrot=1*10^-10];
+resis=1/fThrot^2*coefCorectivResis;
+resis
+}]
+
+In[113]:= defCheckVal[diamSeat_, diamBodyInter_, diamFlapExter_, diamConnectorIn_, 
+  masFlap_, masSpring_, diamStemFlap_] := 
+ Block[{fSeat, fConnectorIn, masMovingParts, fBodyInter, fFlapExter, 
+   fGapBodyFlap, fStemFlap},
+  {
+   fSeat = 0.25*Pi*diamSeat^2; (*Площадь седла клапана *)
+   fConnectorIn = 0.25*Pi*diamConnectorIn^2; (* 
+   Площадь проходного сечения входного патрубка *)
+   masMovingParts = masFlap + masSpring/3.; (* Масса подвижных частей *)
+   
+   fBodyInter = 0.25*Pi*diamBodyInter^2; (* 
+   Площадь по внутреннему диаметру корпуса *)
+   
+   fFlapExter = 0.25*Pi*diamFlapExter^2; (*Площадь тарели клапана *)
+   fGapBodyFlap = fBodyInter - fFlapExter; (* 
+   Площадь кольцевого зазора между корпусом и клапаном *)
+   
+   fStemFlap = 0.25*Pi*diamStemFlap^2 ; (*Площадь штока клапана *)
+   fGapBodyFlap, fSeat, masMovingParts, fFlapExter
+   }]
+
+In[114]:= funcConditionsXDxVal[xValv_, DxValv_, xFlapMax_] := 
+ Block[{xValvOut, DxValvOut}, {
+   {xValvOut, DxValvOut} = {xValv, DxValv};
+   If[xValvOut >= xFlapMax, xValvOut = xFlapMax; 
+    If[DxValvOut > 0., DxValvOut = 0.]];
+   If[xValvOut <= 0., xValvOut = 0.; If[DxValvOut < 0., DxValvOut = 0.]];
+   xValvOut, DxValvOut}]
+
+In[115]:=   (* Функция превращает список словарей в один словарь, где значением выходного словаря является список значений всех словарей входящего списка сохранённые по ключам
+ Пример использования: defListDictsToDict[resultPrint] *)
+defListDictsToDict [list_]:= Block[{nameDict},{
+nameDict=<||>;
+Do[nameDict[key]=Table[list[[j]][key],{j,Length[list]}],{key,Keys[list[[1]]]}];
+nameDict
+}][[1]]
+
+In[116]:=   (* Функция добавляет ключ словаря на место первого значения в списке значений этого же словаря 
+ Пример использования: Sort[defAddKeyToOnePlaceValues[resultDict]]*)
+defAddKeyToOnePlaceValues[dict_]:= Block[{newDict, list},{
+newDict = dict;Do[PrependTo[newDict[i],i],{i,Keys[newDict]}];newDict}][[1]]
+
+In[117]:=   (* Функция формирует список в указаном диапазоне по номеру елементов (для вывода результатов в таблице по диапазону)
+ Пример использования: TableForm[defRangeDisplayList[Sort[result],1,-1]]*)
+defRangeDisplayList[listNameResult_,min_,max_]:=Block[{rangeList},
+{rangeList = {};
+rangeList=Reap[Do[Sow[listNameResult[[i,min;;max]]],{i,Length[listNameResult]}]][[2,1]];
+Do[PrependTo[rangeList[[i]],listNameResult[[i,1]]],{i,Length[listNameResult]}];
+rangeList}][[1]]
+
+In[118]:= defEpilog[dash_,thickness_,param_,tValues_]:=Module[{lines},lines=Table[{tValues[[i,2]],Dashing[dash],Thickness[thickness],Line[{{tValues[[i,1]],Min[param][[1]]},{tValues[[i,1]],Max[param][[1]]}}]},{i,Length[tValues]}];
+lines]
+
+In[119]:=  (* Для вывода одного графика по двум параметрам из ассоциации 
+ Пример использования1: defOnePlotForDict[result,"1_time",{"rpm",White},tValuesAssoc,PlotStyle\[Rule] RGBColor[1.,0.94,0.14],Background\[Rule]GrayLevel[0.1],PlotRange\[Rule] All,FrameStyle\[Rule] White]
+ Пример использования2: defOnePlotForDict[result,"1_time",{"rpm",White},{},          PlotStyle\[Rule] RGBColor[1.,0.94,0.14],Background\[Rule]GrayLevel[0.1],PlotRange\[Rule] All,FrameStyle\[Rule] White]*)
+  defOnePlotForDictEpilog[dict_,keyX_,keyYandColorText_,dictEpilog_,plotOptions:OptionsPattern[ListLinePlot]]:=ListLinePlot[Transpose[{dict[keyX],dict[keyYandColorText[[1]]]}],
+ PlotLabel->Style[keyYandColorText[[1]],keyYandColorText[[2]]],Frame->True,plotOptions,Epilog->{defEpilog[{0.02,0.02},0.,dict[ keyYandColorText[[1]]],dictEpilog]}]
+
+In[120]:= defOnePlotForDict[dict_,keyX_,keyYandColorText_List,plotOptions:OptionsPattern[ListLinePlot]]:=ListLinePlot[Transpose[{dict[keyX],dict[keyYandColorText[[1]]]}],
+ PlotLabel->Style[keyYandColorText[[1]],keyYandColorText[[2]]],Frame->True,plotOptions]
+ (* defOnePlotForDict[dict_,keyX_,keyY_,plotOptions:OptionsPattern[ListLinePlot]]:=ListLinePlot[Transpose[{dict[keyX],dict[keyY]}],
+ PlotLabel->Style[keyY,Yellow],Frame->True,Background->GrayLevel[0.1],FrameStyle-> White,plotOptions]*)
+
+In[121]:=   (* Функция генерирует графики из словаря по всем ключам c поддержанием всех опций ListLinePlot
+  Пример использования: defGeneratePlots[Sort[result],2,1500,White,PlotRange\[Rule]All,PlotStyle\[Rule]Directive[Thickness[0.004],Cyan],Background\[Rule]GrayLevel[0.1],FrameStyle\[Rule]White]*)
+ defGeneratePlotsEpilog[assoc_,numbInRow_,sizeImage_,colorText_,dictEpilog_,plotOptions:OptionsPattern[ListLinePlot]]:=Block[{keys,plots},
+keys=Rest@Keys[assoc];
+plots=ParallelTable[ListLinePlot[{Transpose[{assoc["1_time"],assoc[key]}]},PlotLabel->Style[key,colorText],Frame->True,Epilog->
+{defEpilog[{0.02,0.02},0.,assoc[ key],dictEpilog]},plotOptions],{key,keys}];GraphicsGrid[Partition[plots,numbInRow],ImageSize->sizeImage,Frame->True]]
+
+In[122]:= defGeneratePlotsEpilog[assoc_, numbInRow_, sizeImage_, colorText_, 
+  dictEpilog_, nameTypeVars_, plotOptions : OptionsPattern[ListLinePlot]] := 
+ Block[{keys, plots, keysSortByType},
+  keys = Rest@Keys[assoc];
+  (*sort key*)
+  lengthName = StringLength[nameTypeVars];
+  keysSortByType = 
+   Reap[Do[If[
+       lengthName <= StringLength[i] && 
+        StringTake[i, lengthName] == nameTypeVars, Sow[i]], {i, keys}]][[2, 1]];
+  AppendTo[keysSortByType, keys[[-2]]];
+  AppendTo[keysSortByType, keys[[-1]]];
+  Print["Построение графиков: ", keysSortByType];
+  
+  plots = 
+   ParallelTable[
+    ListLinePlot[{Transpose[{assoc["1_time"], assoc[key]}]}, 
+     PlotLabel -> Style[key, colorText], Frame -> True, Epilog ->
+      {defEpilog[{0.02, 0.02}, 0., assoc[ key], dictEpilog]}, 
+     plotOptions], {key,(*keys*)keysSortByType}]; 
+  GraphicsGrid[Partition[plots, numbInRow], ImageSize -> sizeImage, 
+   Frame -> True]]
+
+In[123]:=   (* Функция генерирует графики из словаря по всем ключам c поддержанием всех опций ListLinePlot
+  Пример использования: defGeneratePlots[Sort[result],2,1500,White,PlotRange\[Rule]All,PlotStyle\[Rule]Directive[Thickness[0.004],Cyan],Background\[Rule]GrayLevel[0.1],FrameStyle\[Rule]White]*)
+ defGeneratePlots[assoc_,numbInRow_,sizeImage_,colorText_,plotOptions:OptionsPattern[ListLinePlot]]:=Block[{keys,plots},
+keys=Rest@Keys[assoc];
+plots=ParallelTable[ListLinePlot[{Transpose[{assoc["1_time"],assoc[key]}]},PlotLabel->Style[key,colorText],Frame->True,plotOptions],{key,keys}];GraphicsGrid[Partition[plots,numbInRow],ImageSize->sizeImage,Frame->True]]
+(*defGeneratePlots[assoc_,numbInRow_,sizeImage_,colorText_,plotOptions:OptionsPattern[ListLinePlot]]:=Block[{keys,plots},
+keys=Rest@Keys[assoc];
+plots=ParallelTable[ListLinePlot[{Transpose[{assoc["i"],assoc[key]}]},PlotLabel->Style[key,colorText],Frame->True(*, Epilog->
+{defEpilog[{0.02,0.02},0.,assoc[ key],dictEpilog]}*),plotOptions],{key,keys}];GraphicsGrid[Partition[plots,numbInRow],ImageSize->sizeImage,Frame->True]]*)
+
+In[124]:= defGeneratePlotsComparisonCompliance[listDicts_,listCol_,numbInRow_,sizeImage_,colorText_,plotOptions:OptionsPattern[ListLinePlot]]:=Block[{keys,plots},keysDict={};
+Do[AppendTo[keysDict,Rest@Keys[i]],{i,listDicts}];
+keys=Intersection@@@Subsets[keysDict,{3}];
+keys=keys[[1]];
+plots=ParallelTable[Show[Table[ListLinePlot[Transpose[{listDicts[[i]]["i"],listDicts[[i]][key]}],PlotLabel->Style[key,colorText],PlotStyle->Directive[Thickness[0.007],listCol[[i]]],Background->GrayLevel[0.1],plotOptions],{i,Length[listDicts]}]],{key,keys}];
+GraphicsGrid[Partition[plots,numbInRow],ImageSize->sizeImage,Frame->True]]
+
+In[125]:= (* defGenerateComparisonOnePlotCompliance[lestDicts,"AWMD",listCol,listLineType,widthLine,PlotRange\[Rule] All,Background\[Rule]GrayLevel[0.1],FrameStyle\[Rule] White] *)
+defGenerateComparisonOnePlotCompliance[listDicts_,nameKey_,listCol_,listLineType_,widthLine_,plotOptions:OptionsPattern[ListLinePlot]]:=Block[{keys,plots},keysDict={};
+Do[AppendTo[keysDict,Rest@Keys[i]],{i,listDicts}];
+keys=Intersection@@@Subsets[keysDict,{3}];
+keys=keys(*[[1]]*);
+plots=Table[ListLinePlot[Transpose[{listDicts[[i]]["i"],listDicts[[i]][nameKey]}],
+PlotStyle->Directive[Thickness[widthLine[[i]]],listCol[[i]],listLineType[[i]]],
+PlotLabel->Style[nameKey,Yellow],
+Frame->True,PlotRange-> All(*,
+plotOptions*)],{i,Length[listDicts]}];
+Show[plots,plotOptions(*,PlotRange\[Rule] All*)]]
+
+In[126]:= defCreateDictClrTimeTXT [listNameValve_] := 
+ Block[{listTime1, listTime2, listClr1, listClr2, listComb1, listComb2, 
+    listTandClr, listAssociation, listTandClrZnach, result}, {
+    listTime1 = 
+     Reap[Do[Sow["t" <> listNameValve[[i]] <> "1"], {i, 
+         Length[listNameValve]}]][[2, 1]];
+    listTime2 = 
+     Reap[Do[Sow["t" <> listNameValve[[i]] <> "2"], {i, 
+         Length[listNameValve]}]][[2, 1]];
+    listClr1 = 
+     Reap[Do[Sow["clr" <> listNameValve[[i]] <> "1"], {i, 
+         Length[listNameValve]}]][[2, 1]];
+    listClr2 = 
+     Reap[Do[Sow["clr" <> listNameValve[[i]] <> "2"], {i, 
+         Length[listNameValve]}]][[2, 1]];
+    listComb1 = 
+     Reap[Do[Sow[{listTime1[[i]], listClr1[[i]]}], {i, 
+         Length[listNameValve]}]][[2, 1]];
+    listComb2 = 
+     Reap[Do[Sow[{listTime2[[i]], listClr2[[i]]}], {i, 
+         Length[listNameValve]}]][[2, 1]];
+    listTandClr = Join[listComb1, listComb2];
+    listTandClrZnach = 
+     Reap[Do[Sow[{Symbol[listTandClr[[i, 1]]], 
+          Symbol[listTandClr[[i, 2]]]}], {i, Length[listTandClr]}]][[2, 1]];
+    result = 
+     AssociationThread[listTandClr[[All, 1]],(*listTandClr*)listTandClrZnach];
+    result
+    }][[1]]
+
+In[127]:= defPltOne [dict_, keyDict_, coef_, Color_, TypeLine_, thickness_, dictEpilog_,
+   x_, y_, plotOptions : OptionsPattern[ListLinePlot]] := Block[{}, {
+    ListLinePlot[Transpose[{dict["1_time"], dict[keyDict]*coef}],
+     Background -> GrayLevel[0.1], Frame -> True, FrameStyle -> White, 
+     PlotStyle -> Directive[Color, TypeLine, Thickness[thickness]], 
+     PlotLabel -> Style[keyDict, White], PlotRange -> {x, y}, 
+     PlotLegends -> SwatchLegend[{keyDict}], Epilog ->
+      {defEpilog[{0.03, 0.03}, 0., dict[ keyDict], dictEpilog]}, 
+     plotOptions]}][[1]]
+
+In[128]:= dfNomLine[nomNum_, plotOptions : OptionsPattern[ListLinePlot]] := 
+ Block[{result}, {
+    result = {{0, nomNum}, {10, nomNum}};
+    ListLinePlot[result, plotOptions]
+    }][[1]]
+
+In[129]:=  (* Функция генерирует графики из словаря по всем ключам c поддержанием всех опций ListLinePlot для сравнения результатов 
+ Пример использования: defGeneratePlotsComparison[dictImported,result,2,1500,White,Background\[Rule]GrayLevel[0.1],FrameStyle\[Rule] White]*)
+ defGeneratePlotsComparison[dict1_,dict2_,numbInRow_,sizeImage_,colorText_,dictEpilog_,plotOptions:OptionsPattern[ListLinePlot]]:=Block[{keys,plots,keysDict1,keysDict2,nonKey1,nonKey2},
+keysDict1=Rest@Keys[dict1];
+keysDict2=Rest@Keys[dict2];
+keys=Intersection[keysDict1,keysDict2];
+plots=ParallelTable[Show[
+ListLinePlot[
+Transpose[{dict1["1_time"],dict1[key]}],PlotLabel->Style[key,colorText],PlotRange->Full,PlotStyle->Directive[Thickness[0.007],RGBColor[0,0.5,1.]],Frame->True,Epilog->
+{defEpilog[{0.02,0.02},0.,dict1[ key],dictEpilog]},plotOptions
+],
+ListLinePlot[
+Transpose[{dict2["1_time"],dict2[key]}],PlotRange->Full,PlotStyle-> Directive[Thickness[0.004],RGBColor[1.,0.94,0.14]]
+],PlotRange-> All],
+{key,keys}];
+If[Length[keys]<Length[keysDict1] || Length[keys]<Length[keysDict2],
+nonKey1 = Complement[keysDict2,keysDict1];
+nonKey2 = Complement[keysDict1,keysDict2];
+Print["Некоторые данные отсутствуют: \nВ Словаре #1 нет: ",nonKey1,"\nВ Словаре #2 нет: ", nonKey2];
+];
+GraphicsGrid[Partition[plots,numbInRow],ImageSize->sizeImage,Frame->True]]
+
+In[130]:= defGeneratePlotsComparison1[dict1_,dict2_,numbInRow_,sizeImage_,colorText_,dictEpilog_,colorLine_List,thickness_List,plotOptions:OptionsPattern[ListLinePlot]]:=Block[{keys,plots,keysDict1,keysDict2,nonKey1,nonKey2},
+keysDict1=Rest@Keys[dict1];
+keysDict2=Rest@Keys[dict2];
+keys=Intersection[keysDict1,keysDict2];
+plots=ParallelTable[Show[
+ListLinePlot[
+Transpose[{dict1["1_time"],dict1[key]}],PlotLabel->Style[key,colorText],PlotRange->Full,PlotStyle->Directive[Thickness[thickness[[1]]],colorLine[[1]](*RGBColor[0,0.5,1.]*)],Frame->True,Epilog->
+{defEpilog[{0.02,0.02},0.,dict1[ key],dictEpilog]},plotOptions
+],
+ListLinePlot[
+Transpose[{dict2["1_time"],dict2[key]}],PlotRange->Full,PlotStyle-> Directive[Thickness[thickness[[2]]],colorLine[[2]],Dashed(*RGBColor[1.,0.94,0.14]*)]
+],PlotRange-> All],
+{key,keys}];
+If[Length[keys]<Length[keysDict1] || Length[keys]<Length[keysDict2],
+nonKey1 = Complement[keysDict2,keysDict1];
+nonKey2 = Complement[keysDict1,keysDict2];
+Print["Некоторые данные отсутствуют: \nВ Словаре #1 нет: ",nonKey1,"\nВ Словаре #2 нет: ", nonKey2];
+];
+GraphicsGrid[Partition[plots,numbInRow],ImageSize->sizeImage,Frame->True]]
+
+In[131]:= defComparisonOnePlot[dictImported_,result_,nameComparison_]:=Block[{},{
+Show[
+defOnePlotForDict[dictImported,"i",{nameComparison,White},PlotStyle-> Directive[Thickness[0.007],Blue],
+Background->GrayLevel[0.1],PlotRange-> All,FrameStyle-> White],
+defOnePlotForDict[result,"i",{nameComparison,White},PlotStyle->Directive[Thickness[0.003],RGBColor[1.,0.94,0.14]],
+Background->GrayLevel[0.1],PlotRange-> All,FrameStyle-> White]
+,PlotRange-> All]}][[1]]
+
+In[132]:=  (* Функция генерирует графики из словаря по всем ключам c поддержанием всех опций ListLinePlot для сравнения результатов 
+ Пример использования: defGeneratePlotsComparison[dictImported,result,2,1500,White,Background\[Rule]GrayLevel[0.1],FrameStyle\[Rule] White]*)
+ defGeneratePlotsComparisonComp[dict1_,dict2_,numbInRow_,sizeImage_,colorText_,plotOptions:OptionsPattern[ListLinePlot]]:=Block[{keys,plots,keysDict1,keysDict2,nonKey1,nonKey2},
+keysDict1=Rest@Keys[dict1];
+keysDict2=Rest@Keys[dict2];
+keys=Intersection[keysDict1,keysDict2];
+plots=ParallelTable[Show[
+ListLinePlot[
+Transpose[{dict1["i"],dict1[key]}],PlotLabel->Style[key,colorText],PlotRange->Full,PlotStyle->Directive[Thickness[0.007],Blue(*RGBColor[0,0.5,1.]*)(*Red*)],Frame->True,plotOptions
+],
+ListLinePlot[
+Transpose[{dict2["i"],dict2[key]}],PlotRange->Full,PlotStyle-> Directive[Thickness[0.003],RGBColor[1.,0.94,0.14]]
+],PlotRange-> All],
+{key,keys}];
+If[Length[keys]<Length[keysDict1] || Length[keys]<Length[keysDict2],
+nonKey1 = Complement[keysDict2,keysDict1];
+nonKey2 = Complement[keysDict1,keysDict2];
+Print["Некоторые данные отсутствуют: \nВ Словаре #1 нет: ",nonKey1,"\nВ Словаре #2 нет: ", nonKey2];
+];
+GraphicsGrid[Partition[plots,numbInRow],ImageSize->sizeImage,Frame->True]]
+
+In[133]:=    (* Функция превращает словарь во вложеный список(для экспорта) 
+ Пример использования: defDictValueListToList[result];*)
+ defDictValueListToList[dict_]:= Block[{newDict, list},{
+newDict = dict;
+list = {};
+list = Reap[Do[Sow[newDict[i]],{i,Keys[newDict]}]];
+list}][[1,2,1]]
+
+In[134]:=   (* Функция превращает вложеный список в словарь где первое значение списка будет ключом (для импортов)
+ Пример использования: defListToAssociation[Sort[listImported]]*)
+defListToAssociation[list_List]:=AssociationThread[First/@list->list]
+
+In[135]:= SetDirectory[NotebookDirectory[]];
+currentDirectory = NotebookDirectory[];
+
+fileNameForImportData = "_1_InitialDataSV3.xlsx";
+fileNameService = "_2_SERVICE.m";
+fileNameForImportAnotherData = "_3_oldData_new.xlsx";
+fileNameForExportData = "_4_EXPORT.xlsx";
+
+pathToService = FileNameJoin[{currentDirectory, fileNameService}];
+pathToImportData = FileNameJoin[{currentDirectory, fileNameForImportData}];
+pathToExportData = FileNameJoin[{currentDirectory, fileNameForExportData}];
+
+(*Get[pathToService]//Quiet(* инициализируем функции из файла _2_SERVICE.m*);*)
+
+In[144]:= SIorSGS[(*"SGS"*) "SI"];
+
+In[145]:= impSheetGen = Import[pathToImportData, {"Data", 1, All, {1, 2, 3}}];
+assGen = AssociationThread[impSheetGen[[All, 1]], impSheetGen[[All, {2, 3}]]];
+defCalculatCoef[dict_] := Block[{return},
+   {
+    If[dict[[2]] == "-", Return[dict[[1]]]];
+    If[dict[[2]] == "pressure", Return[dict[[1]]*\[Delta]P]];
+    If[dict[[2]] == "density", Return[dict[[1]]*\[Delta]Rho]];
+    If[dict[[2]] == "inertia", Return[dict[[1]]*\[Delta]J*10]];(*!!!!!!!!!!!!!!!!!!!!!!!*)
+    If[dict[[2]] == "diameter", Return[dict[[1]]*\[Delta]D]];
+    If[dict[[2]] == "area", Return[dict[[1]]*\[Delta]F]];
+    If[dict[[2]] == "volume", Return[dict[[1]]*\[Delta]V]];
+    If[dict[[2]] == "gas constant", Return[dict[[1]]*\[Delta]R]];
+    If[dict[[2]] ==  "inertia turb", Return[dict[[1]]*\[Delta]Jinert]];
+    If[dict[[2]] == "compliance", Return[dict[[1]]*\[Delta]C]];
+    If[dict[[2]] == "resist cavitation", Return[dict[[1]]*\[Delta]Rkav]];
+    If[dict[[2]] == "heat capacity", Return[dict[[1]]*\[Delta]Cp]];
+    Return["\[LeftArrow]\[LeftArrow]\[LeftArrow] NoTyepeVarInExcel \[RightArrow]\[RightArrow]\[RightArrow]"]
+    }][[1]]
+
+In[148]:= Do[
+  Set[Evaluate[Symbol[ToString[i]]], defCalculatCoef[assGen[i]]];
+  Set[Evaluate[Symbol[ToString[i] <> "Nom"]], defCalculatCoef[assGen[i]]]
+  , {i, Keys[assGen]}] // Quiet
+
+
+
+In[149]:= defLinearLaw[t_, valZero_, valNom_, t1_, t2_] := Block[{omega, rpm},
+  rpm = If[t <= t1, valZero, 
+    If[t <= t2, valZero + (valNom - valZero)/(t2 - t1)*(t - t1), valNom]];
+  omega = rpm (*\[Omega]*);
+  rpm]
+
+
+
+In[150]:= cyclogramValveList = 
+  Import[pathToImportData, {"Data", 3, Range[2, 13], Range[3, 10]}];
+cyclogramValveDict = 
+  Association @@ (Rule[#[[1]], Rest[#]] & /@ cyclogramValveList);
+defMyValves[cyclogramValveDict]
+
+In[153]:= pressureVaporOx = funcImport[pathToImportData, 4, Range[3, 24], Range[1, 2]];
+pressureVaporFu = funcImport[pathToImportData, 4, Range[3, 11], Range[5, 6]];
+
+In[155]:= interpPressureVaporOx    = 
+  Interpolation[{#1, #2*\[Delta]P} & @@@ pressureVaporOx];
+interpPressureVaporFu    = 
+  Interpolation[{#1, #2*\[Delta]P} & @@@ pressureVaporFu, 
+   InterpolationOrder -> 2];
+
+In[157]:= interpPressureVaporOx[55]
+
+Out[157]= 0.
+
+In[158]:= coefsHBoostOx = funcImport[pathToImportData, 2, Range[9, 11], 2];
+coefsHoPmp   = funcImport[pathToImportData, 2, Range[9, 11], 3];
+coefsHPmpFu1 = funcImport[pathToImportData, 2, Range[9, 11], 4];
+coefsHPmpFu2 = funcImport[pathToImportData, 2, Range[9, 11], 5];
+coefsEtaBoostOx = funcImport[pathToImportData, 2, Range[14, 16], 2];
+coefsEtaPmpOx   = funcImport[pathToImportData, 2, Range[14, 16], 3];
+coefsEtaPmpFu1 = funcImport[pathToImportData, 2, Range[14, 16], 4];
+coefsEtaPmpFu2 = funcImport[pathToImportData, 2, Range[14, 16], 5];
+coefsEtaTrb = funcImport[pathToImportData, 2, Range[15, 16], 7];
+coefsEtaStTrb = funcImport[pathToImportData, 2, Range[15, 16], 9];
+
+In[168]:= (*listNumber= 3;
+lastRow=344;
+lastColoumn= 16;
+
+pathImportKRT = \
+"Z:\\Work\\WORK\\SV3\\DynamicLaunch\\MY\\Program_launch_SV3\\version_02\\kRT_\
+For_Ch\\kRTCp_Ch_OxygenJeta.xlsx";
+kKerLox= Transpose[Import[pathImportKRT,{"Data",listNumber,Range[1,lastRow],\
+Range[1,lastColoumn]}]];
+kmKerLox = \
+Import[pathImportKRT,{"Data",listNumber,Range[1,lastRow],lastColoumn+1}];
+pressKerLox= \
+Import[pathImportKRT,{"Data",listNumber,lastRow+1,Range[1,lastColoumn]}]*10^5;
+ListInterpolation[kKerLox,{pressKerLox,kmKerLox},InterpolationOrder\[Rule]1]*)
+
+(*(*___Oxygen___*)
+defInterp2D[pathToImportData,7,226,35,1,10^6]*)
+interpRhoOx[pressure_, temperature_] := 
+  Block[{}, {InterpolatingFunction[pressure/\[Delta]P, 
+       temperature]*\[Delta]Rho}][[1]];
+(*(*___Kerosene___*)
+defInterp2D[pathToImportData,8,143,33,1,10^6]*)
+interpRhoFu[pressure_, temperature_] :=
+  Block[{}, {InterpolatingFunction[pressure/\[Delta]P, 
+       temperature]*\[Delta]Rho}][[1]];
+
+(*(*___Oxygen___*)
+defInterp2D[pathToImportData,9,226,35,1,10^6]*)
+interpCpOxygen[pressure_, temperature_] := 
+  Block[{}, {InterpolatingFunction[pressure/\[Delta]P, 
+       temperature]*10^3*\[Delta]Cp}][[1]];
+
+(*(*___Oxygen___*)
+defInterp2D[pathToImportData,10,226,35,1,10^6]*)
+interpKOxygen[pressure_, temperature_] := 
+  Block[{}, {InterpolatingFunction[pressure/\[Delta]P, 
+       temperature]*\[Delta]Cp}][[1]];
+
+In[173]:= (*lastRowGg=364;
+lastColoumnGg= 31;
+(*pathImportKRTGg = \
+"Z:\\Work\\WORK\\SV3\\DynamicLaunch\\MY\\Program_launch_SV3\\Interp2D\\Gg\\\
+AllParametersGg.xlsx";*)
+pathImportKRTGg = \
+"Z:\\Work\\WORK\\SV3S\\DynamicLaunch\\MY\\Program_launch_SV3\\Interp2D\\Gg\\\
+AllParametersGg.xlsx";
+(*___k___*)
+defInterp2D[pathImportKRTGg,1,lastRowGg,lastColoumnGg,1,10^5]
+(*___R___*)
+defInterp2D[pathImportKRTGg,2,lastRowGg,lastColoumnGg,1,10^5]
+(*___T___*)
+defInterp2D[pathImportKRTGg,3,lastRowGg,lastColoumnGg,1,10^5]
+(*(*___Cp___*)
+defInterp2D[pathImportKRTGg,4,lastRowGg,lastColoumnGg,1,10^5]*)*)
+
+interpKOxygenJetaGg[pressure_, km_] := 
+  Block[{}, {InterpolatingFunction[pressure/\[Delta]P, km]}][[1]];
+interpROxygenJetaGg[pressure_, km_] := 
+  Block[{}, {InterpolatingFunction[pressure/\[Delta]P, km]*\[Delta]R}][[1]];
+interpTOxygenJetaGg[pressure_, km_] := 
+  Block[{}, {InterpolatingFunction[pressure/\[Delta]P, km]}][[1]];
+interpCpOxygenJetaGg[pressure_, km_] := 
+  Block[{}, {InterpolatingFunction[pressure/\[Delta]P, km]*\[Delta]Cp}][[1]];
+
+
+(*lastRowCh=773;
+lastColoumnCh= 21;
+pathImportKRTCh = \
+"Z:\\Work\\MY\\Program_launch_SV3\\Interp2D\\Chamber\\AllParametersCh.xlsx";
+(*___k___*)
+defInterp2D[pathImportKRTCh,1,lastRowCh,lastColoumnCh,1,10^5]
+(*___R___*)
+defInterp2D[pathImportKRTCh,2,lastRowCh,lastColoumnCh,1,10^5]
+(*___T___*)
+defInterp2D[pathImportKRTCh,3,lastRowCh,lastColoumnCh,1,10^5]
+(*___Cp___*)
+defInterp2D[pathImportKRTCh,4,lastRowCh,lastColoumnCh,1,10^5]*)
+
+interpKOxygenJetaCh[pressure_, km_] := 
+  Block[{}, {InterpolatingFunction[pressure/\[Delta]P, km]}][[1]];
+interpROxygenJetaCh[pressure_, km_] := 
+  Block[{}, {InterpolatingFunction[pressure/\[Delta]P, km]*\[Delta]R}][[1]];
+interpTOxygenJetaCh[pressure_, km_] := 
+  Block[{}, {InterpolatingFunction[pressure/\[Delta]P, km]}][[1]];
+interpCpOxygenJetaCh[pressure_, km_] := 
+  Block[{}, {InterpolatingFunction[pressure/\[Delta]P, km]*\[Delta]Cp}][[1]];
+
+In[184]:= intAVo1[t_] := FKL[aVo1Min, aVo1Max, tVo11, tVo12, dtVo11, dtVo12, t];
+(*intACVo1[t_]:=FKL[aCVo1Min,aCVo1Max,tCVo11,tCVo12,dtCVo11,dtCVo12,t];*)
+intAVo2[t_] := FKL[aVo2Min, aVo2Max, tVo21, tVo22, dtVo21, dtVo22, t];
+intAVo3[t_] := FKL[aVo3Min, aVo3Max, tVo31, tVo32, dtVo31, dtVo32, t];
+intAVo4[t_] := FKL[aVo4Min, aVo4Max, tVo41, tVo42, dtVo41, dtVo42, t];
+intAVf1[t_] := FKL[aVf1Min, aVf1Max, tVf11, tVf12, dtVf11, dtVf12, t];
+intAVf2[t_] := FKL[aVf2Min, aVf2Max, tVf21, tVf22, dtVf21, dtVf22, t]; 
+intAVf3[t_] := 
+ FKL[aVf3Min, aVf3Max, tVf31, tVf32, dtVf31, dtVf32, 
+  t];(*intACVf1[t_]:=FKL[aCVf1Min,aCVf1Max,tCVf11,tCVf12,dtCVf11,dtCVf12,t];
+intACVf2[t_]:=FKL[aCVf2Min,aCVf2Max,tCVf21,tCVf22,dtCVf21,dtCVf22,t];
+intACVf3[t_]:=FKL[aCVf3Min,aCVf3Max,tCVf31,tCVf32,dtCVf31,dtCVf32,t];
+intACVf4[t_]:=FKL[aCVf4Min,aCVf4Max,tCVf41,tCVf42,dtCVf41,dtCVf42,t];*)
+
+In[190]:= kGgNom = interpKOxygenJetaGg[pGgNom, kmGgNom];
+rhoFu = interpRhoFu[pfT, TfT];
+rhoOx = interpRhoOx[239*10^5*\[Delta]P, 104];
+\[Omega] = (2 Pi)/60;
+
+In[194]:= ToB0 = ToB;
+coefEpsf7 = epsf7 (speedSoundJETA/areaPipeDY4);
+coefEpsf5 = epsf5 (speedSoundJETA/areaPipeDY4);
+coefEpsf4 = epsf4 (speedSoundJETA/areaPipeDY6);
+coefEpsf6 = epsf6 (speedSoundJETA/areaPipeDY4);
+
+
+
+In[199]:= 	muThCh = 1 ;(* Коэффициент расхода крит. сечения сопла *)
+	dThCh = 0.0484;
+	aThCh = 0.25*Pi*dThCh^2;
+	aChTemp = aThCh;
+         kmCh = mChOx/(mChFu + 1*10^-10);
+	If[kmCh < 1*10^-4, kmCh = 1*10^-4];
+	If[kmCh > 100, kmCh = 100];
+
+
+In[206]:= 	RCh = interpROxygenJetaCh[pCh, kmCh]*\[Delta]R;
+	TCh = interpTOxygenJetaCh[pCh, kmCh];
+	kCh = interpKOxygenJetaCh[pCh, kmCh];
+
+In[209]:= 	mChTemp = GGAZ[pChNom, pEnv, muThCh, aThCh, TCh, kCh, RCh]
+	aChTemp || aChTemp*mChNom/mChTemp
+
+Out[209]= 8.31828
+
+Out[210]= 0.00183984 || 0.00186123
+
+In[211]:=          aThChcorect = aChTemp*mChNom/mChTemp
+
+
+Out[211]= 0.00186123
+
+In[212]:= muGg = 1; muGv = 1;
+fGg = fTrb; fGv = 0.0004708326005486739;
+fGgTemp = fGg; fGvTemp = fGv;
+mGgNom = (mo3xGg + mo4xIg + mf5xIg);
+kmGg = (mo3xGg + mo4xIg)/((mf5xIg) + 1*10^-10);
+kGg = interpKOxygenJetaGg[pGgNom, kmGg];
+RGg = interpROxygenJetaGg[pGgNom, kmGg]*\[Delta]R;
+TGg = interpTOxygenJetaGg[pGgNom, kmGg];
+TGv = TGg*(pTrbOutNom/pGgNom)^((kGg - 1)/kGg);
+
+In[221]:= mGgTemp = GGAZ[pGgNom,         pTrbOutNom,       muGg, fGgTemp, TGg, kGg, RGg];
+mGvTemp = GGAZ[pTrbOutNom, pChNom,                muGv, fGvTemp, TGv,   kGg, 
+   RGg];
+
+fGgTemp || fGgTemp*mGgNom/mGgTemp
+         fGg1 = fGgTemp*mGgNom/mGgTemp
+
+Out[223]= 0.00028245 || 0.00021935
+
+Out[224]= 0.00021935
+
+In[225]:= fGvTemp || fGvTemp*mGgNom/mGvTemp
+         fGv1 = fGvTemp*mGgNom/mGvTemp
+
+Out[225]= 0.000470833 || 0.000469656
+
+Out[226]= 0.000469656
+
+In[227]:= dpGgToTrbInNom  = pGgNom - pTrbInNom;
+dzetaGgToTrb = 
+ NSolve[dpGgToTrbInNom == 
+    Sqrt[dzetaGgToTrb1*RGg*TGg*(mo3xGg + mo4xIg + mf5xIg)^2], dzetaGgToTrb1][[
+  1, 1, 2]]
+
+
+Out[228]= 36818.3
+
+In[229]:= 	Print["R ", RGg     , " T ", TGg , " k ", kGg]
+	Print["R ", 260.27756168233776`     , " T ", 757.8443309476517` , " k ", \
+1.3208025981194678` ]
+
+During evaluation of In[229]:= R 260.255 T 722.834 k 1.32495
+
+During evaluation of In[229]:= R 260.278 T 757.844 k 1.3208
+
+In[231]:= HpumpOxNom = po2 - po1;
+HpumpFu1Nom = pf2 - pf1;
+HpumpFu2Nom = pf3 - pf2;
+torqPmpOxNom = 60./(2*Pi*rpmNom)*po2*mPmpOx/(rhoOx*etaPmpOx);
+torqPmpFu1Nom = 60./(2*Pi*rpmNom)*pf2*mPmp1Fu/(rhoFu*etaPmp1Fu);
+torqPmpFu2Nom = 60./(2*Pi*rpmNom)*pf3*mPmp2Fu/(rhoFu*etaPmp2Fu);
+torqSumPmpNom = torqPmpOxNom + torqPmpFu1Nom + torqPmpFu2Nom;
+
+In[238]:= LadTrbNom = 
+  kGg/(kGg - 1.)*RGg*TTrbIn*(1. - (pTrbOutNom/pTrbInNom)^((kGg - 1.)/kGg));
+uTrbNom = Pi*DTrb*rpmNom/60.;
+cadTrbNom = Sqrt[2.*g0*LadTrbNom];
+mTrbNom = (mo3xGg + mo4xIg) + (mf5xIg);
+torqTrbNom = 60./(2.*Pi*rpmNom)*mTrbNom*LadTrbNom*etaTrb ;
+coefTorqTrb = torqSumPmpNom/torqTrbNom;
+Print["Мометн насосов = ", torqSumPmpNom , "\nМометн турбины = ", torqTrbNom  \
+, "\nКоэффициент    = ", NumberForm[coefTorqTrb, 5]]
+
+During evaluation of In[238]:= Мометн насосов = 79.3804
+Мометн турбины = 74.2714
+Коэффициент    = 1.0688
+
+In[245]:= rhoPmpOxNom = interpRhoOx[po1, ToT];
+rhoPmp1FuNom = interpRhoFu[pf1, TfT];
+rhoPmp2FuNom = interpRhoFu[pf2, TPmp2InFu];
+
+In[248]:= flagCavitation = (*True*)False;
+
+In[249]:= DKSI =(*True*) 
+  False (*True - 1-я модель кавитации, False - 2-я модель кавитации*);
+
+In[250]:= coloumnPmp = 3;
+dAugerOuterPmpOx = funcImport[pathToImportData, 2, 2, coloumnPmp];
+dHubAugerPmpOx = funcImport[pathToImportData, 2, 3, coloumnPmp];
+dPipeInPmpOx = funcImport[pathToImportData, 2, 4, coloumnPmp];
+nPmpOx = funcImport[pathToImportData, 2, 18, coloumnPmp];
+pitcHoPmp = funcImport[pathToImportData, 2, 5, coloumnPmp];
+lengthAugerPmpOx = funcImport[pathToImportData, 2, 6, coloumnPmp];
+numAugerBladesPmpOx = funcImport[pathToImportData, 2, 7, coloumnPmp];
+
+In[258]:= If[flagCavitation == 
+  True, {B1PmpOx, B2PmpOx, pCpPmpOx, qabPmpOx, tkPmpOx, JPmpOxVar, 
+   coefHoPmpVar, QABOx} = 
+  defCavitation [DKSI, mPmpOx, po1, True(*False*), dAugerOuterPmpOx, 
+   dHubAugerPmpOx, dPipeInPmpOx, rpmNom, nPmpOx, pitcHoPmp, rhoPmpOxNom, 
+   lengthAugerPmpOx, numAugerBladesPmpOx, interpPressureVaporOx[TTnkOx]]]
+-rhoPmpOxNom/B1PmpOx
+
+Out[259]= -(1138.09/B1PmpOx)
+
+In[260]:= If[flagCavitation == False, coefHoPmpVar = 1 ; coefHpumpFuVar = 1];
+FuncPmpHOx1[mPmpOutFuPow_, rhoFu_, 
+  rpm_] := (FuncBasePumpH[mPmpOutFuPow, rhoFu*(10^2)^-3/\[Delta]Rho, rpm, 
+    coefsHoPmp*coefHoPmpVar]*98066.5*\[Delta]P)
+coefHoPmp = HpumpOxNom/FuncPmpHOx1[mPmpOx, rhoPmpOxNom, rpmNom];
+FuncHoPmp[mPmpOutFuPow_, rhoFu_, rpm_] := 
+  If[rpm ==  1, 0, FuncPmpHOx1[mPmpOutFuPow, rhoFu, rpm]*coefHoPmp];
+Print["coefHoPmp: ", coefHoPmp, "\nH: ", 
+ FuncHoPmp[mPmpOx, rhoPmpOxNom, rpmNom]]
+
+During evaluation of In[260]:= coefHoPmp: 0.951417
+H: 2.34008*10^7
+
+In[265]:= coloumnPmp = 4;
+dAugerOuterPmpFu1 = funcImport[pathToImportData, 2, 2, coloumnPmp];
+dHubAugerPmpFu1 = funcImport[pathToImportData, 2, 3, coloumnPmp];
+dPipeInPmpFu1 = funcImport[pathToImportData, 2, 4, coloumnPmp];
+nPmpFu1 = funcImport[pathToImportData, 2, 18, coloumnPmp];
+pitchPmpFu1 = funcImport[pathToImportData, 2, 5, coloumnPmp];
+lengthAugerPmpFu1 = funcImport[pathToImportData, 2, 6, coloumnPmp];
+numAugerBladesPmpFu1 = funcImport[pathToImportData, 2, 7, coloumnPmp];
+
+In[273]:= If[flagCavitation == 
+   True, {B1PmpFu1, B2PmpFu1, pCpPmpFu1, qabPmpFu1, tkPmpFu1, JPmpFuVar1, 
+    coefHpumpFuVar1, QABFu1} = 
+   defCavitation [DKSI, mPmp1Fu, pf1, True(*False*), dAugerOuterPmpFu1, 
+    dHubAugerPmpFu1, dPipeInPmpFu1, rpm, nPmpFu1, pitchPmpFu1, rhoPmp1FuNom, 
+    lengthAugerPmpFu1, numAugerBladesPmpFu1, interpPressureVaporFu[TTnkFu]]];
+-rhoPmp1FuNom/B1PmpFu1
+
+Out[274]= -(814.384/B1PmpFu1)
+
+In[275]:= If[flagCavitation == False, coefHpumpFuVar1 = 1 ; coefHpumpFuVar1 = 1];
+FuncPmpHFu11[mPmpOutFuPow_, rhoFu_, 
+   rpm_] := (FuncBasePumpH[mPmpOutFuPow, rhoFu*(10^2)^-3/\[Delta]Rho, rpm, 
+     coefsHPmpFu1*coefHpumpFuVar1]*98066.5*\[Delta]P);
+coefHfPmp1 = HpumpFu1Nom/FuncPmpHFu11[mPmp1Fu, rhoPmp1FuNom, rpm];
+FuncHPmp1Fu[mPmpOutFuPow_, rhoFu_, rpm_] := 
+  If[rpm == 1, 0, FuncPmpHFu11[mPmpOutFuPow, rhoFu, rpm]*coefHfPmp1];
+Print["coefHFu: ", coefHfPmp1, "\nH: ", 
+ FuncHPmp1Fu[mPmp1Fu, rhoPmp1FuNom, rpm]]
+
+During evaluation of In[275]:= coefHFu: 0.990377
+H: 1.50803*10^7
+
+In[280]:= coloumnPmp = 5;
+dAugerOuterPmpFu2 = funcImport[pathToImportData, 2, 2, coloumnPmp];
+dHubAugerPmpFu2 = funcImport[pathToImportData, 2, 3, coloumnPmp];
+dPipeInPmpFu2 = funcImport[pathToImportData, 2, 4, coloumnPmp];
+nPmpFu2 = funcImport[pathToImportData, 2, 18, coloumnPmp];
+pitchPmpFu2 = funcImport[pathToImportData, 2, 5, coloumnPmp];
+lengthAugerPmpFu2 = funcImport[pathToImportData, 2, 6, coloumnPmp];
+numAugerBladesPmpFu2 = funcImport[pathToImportData, 2, 7, coloumnPmp];
+
+In[288]:= If[flagCavitation == 
+   True, {B1PmpFu2, B2PmpFu2, pCpPmpFu2, qabPmpFu2, tkPmpFu2, JPmpFuVar2, 
+    coefHpumpFuVar2, QABFu2} = 
+   defCavitation [DKSI, mPmp2Fu, pf2, True(*False*), dAugerOuterPmpFu2, 
+    dHubAugerPmpFu2, dPipeInPmpFu2, rpm, nPmpFu2, pitchPmpFu2, rhoPmp2FuNom, 
+    lengthAugerPmpFu2, numAugerBladesPmpFu2, interpPressureVaporFu[TTnkFu]]];
+-rhoPmp2FuNom/B1PmpFu2
+
+Out[289]= -(814.692/B1PmpFu2)
+
+In[290]:= If[flagCavitation == False, coefHpumpFuVar2 = 1 ; coefHpumpFuVar2 = 1];
+FuncPmpHFu12[mPmpOutFuPow_, rhoFu_, 
+   rpm_] := (FuncBasePumpH[mPmpOutFuPow, rhoFu*(10^2)^-3/\[Delta]Rho, rpm, 
+     coefsHPmpFu2*coefHpumpFuVar2]*98066.5*\[Delta]P);
+coefHfPmp2 = HpumpFu2Nom/FuncPmpHFu12[mPmp2Fu, rhoPmp2FuNom, rpm];
+FuncHfPmp2[mPmpOutFuPow_, rhoFu_, rpm_] := 
+  If[rpm == 1, 0, FuncPmpHFu12[mPmpOutFuPow, rhoFu, rpm]*coefHfPmp2];
+Print["coefHFu: ", coefHfPmp2, "\nH: ", FuncHfPmp2[mPmp2Fu, rhoPmp2FuNom, rpm]]
+
+During evaluation of In[290]:= coefHFu: 0.95595
+H: 6.5949*10^6
+
+In[295]:= FuncEtaPmpOx1[mPmpOutOxPow_, rhoOx_, rpm_, coefPmpEtaOx_] := 
+  FuncBasePumpEta[mPmpOutOxPow, rhoOx/\[Delta]Rho, rpm, coefPmpEtaOx];
+coefEtaOx = etaPmpOx/FuncEtaPmpOx1[mPmpOx, rhoPmpOxNom, rpmNom, coefsEtaPmpOx];
+FuncEtaPmpOx[mPmpOutOxPow_, rhoOx_, 
+   rpm_] := (FuncEtaPmpOx1[mPmpOutOxPow, rhoOx, rpm, coefsEtaPmpOx]*coefEtaOx);
+Print["coefEtaOx: ", coefEtaOx, "\neta: ", 
+ FuncEtaPmpOx[mPmpOx, rhoPmpOxNom, rpmNom]]
+
+During evaluation of In[295]:= coefEtaOx: 1.0003
+eta: 0.48353
+
+In[299]:= FuncEtaPmpFu11[mPmpOutFuPow_, rhoFu_, rpm_, coefEtaPmpFu_] := 
+  FuncBasePumpEta[mPmpOutFuPow, rhoFu, rpm/\[Delta]Rho, coefEtaPmpFu];
+coefEtaFu1 = etaPmp1Fu/FuncEtaPmpFu11[mPmp1Fu, rhoFu, rpmNom, coefsEtaPmpFu1];
+FuncEtaPmpFu1[mPmpOutFuPow_, rhoFu_, 
+   rpm_] := (FuncEtaPmpFu11[mPmpOutFuPow, rhoFu, rpm, coefsEtaPmpFu1]*
+    coefEtaFu1);
+Print["coefEtaFu1: ", coefEtaFu1, "\neta: ", 
+ FuncEtaPmpFu1[mPmp1Fu, rhoFu, rpmNom]]
+
+During evaluation of In[299]:= coefEtaFu1: 1.00435
+eta: 0.43754
+
+In[303]:= FuncEtaPmpFu12[mPmpOutFuPow_, rhoFu_, rpm_, coefEtaPmpFu_] := 
+  FuncBasePumpEta[mPmpOutFuPow, rhoFu, rpm/\[Delta]Rho, coefEtaPmpFu];
+coefEtaFu2 = etaPmp2Fu/FuncEtaPmpFu12[mPmp2Fu, rhoFu, rpmNom, coefsEtaPmpFu2];
+FuncEtaPmpFu2[mPmpOutFuPow_, rhoFu_, 
+   rpm_] := (FuncEtaPmpFu12[mPmpOutFuPow, rhoFu, rpm, coefsEtaPmpFu2]*
+    coefEtaFu2);
+Print["coefEtaFu2: ", coefEtaFu2, "\neta: ", 
+ FuncEtaPmpFu1[mPmp2Fu, rhoFu, rpmNom]]
+
+During evaluation of In[303]:= coefEtaFu2: 1.00497
+eta: 0.0468648
+
+In[307]:= FuncEtaTrb1 [UtoC_] := FuncBaseTurbEta[UtoC, coefsEtaTrb];
+ratioEtaTrb = etaTrb/FuncEtaTrb1 [uTrbNom/cadTrbNom];
+FuncEtaTrb [UtoC_] := (FuncEtaTrb1[UtoC]*ratioEtaTrb);
+Print["coefEtaTrb: ", ratioEtaTrb, "\neta: ", FuncEtaTrb [uTrbNom/cadTrbNom]]
+
+During evaluation of In[307]:= coefEtaTrb: 1.00021
+eta: 0.6201
+
+In[311]:= checkEtaHTorque := Print["_____________________________\n",
+   "\[DownArrow]\[DownArrow]\[DownArrow]\[DownArrow]\[DownArrow]___TORQUE___\
+\[DownArrow]\[DownArrow]\[DownArrow]\[DownArrow]\[DownArrow]\n",
+   "Мометн насосов = ", torqSumPmpNom ,
+   "\nМометн турбины = ", torqTrbNom  ,
+    "\nКоэффициент    = ", NumberForm[coefTorqTrb, 5], 
+   "          ", (1 - 1/coefTorqTrb)*100 <= 1.5,
+   "\n\n_____________________________\n",
+   "\[DownArrow]\[DownArrow]\[DownArrow]\[DownArrow]\[DownArrow]___H___\[DownArrow]\[DownArrow]\[DownArrow]\[DownArrow]\[DownArrow]",
+   "\ncoefHOx: ", coefHoPmp, "                ", (1 - 1/coefHoPmp)*100 <= 1.5,
+    "\nH: ", FuncHoPmp[mPmpOx, rhoPmpOxNom, rpmNom],
+   "\ncoefHFu1: ", coefHfPmp1, 
+   "               ", (1 - 1/coefHfPmp1)*100 <= 1.5, "\nH: ", 
+   FuncHPmp1Fu[mPmp1Fu, rhoPmp1FuNom, rpmNom],
+   "\ncoefHFu2: ", coefHfPmp2, 
+   "                ", (1 - 1/coefHfPmp2)*100 <= 1.5, "\nH: ", 
+   FuncHfPmp2[mPmp2Fu, rhoPmp2FuNom, rpmNom],
+   "\n\n_____________________________\n",
+   "\[DownArrow]\[DownArrow]\[DownArrow]\[DownArrow]\[DownArrow]___eta___\[DownArrow]\[DownArrow]\[DownArrow]\[DownArrow]\[DownArrow]",
+   "\ncoefEtaOx: ", coefEtaOx, 
+   "                ", (1 - 1/coefEtaOx)*100 <= 1.5, "\neta: ", 
+   FuncEtaPmpOx[mPmpOx, rhoPmpOxNom, rpmNom],
+   "\ncoefEtaFu1: ", coefEtaFu1, 
+   "              ", (1 - 1/coefEtaFu1)*100 <= 1.5, "\neta: ", 
+   FuncEtaPmpFu1[mPmp1Fu, rhoPmp1FuNom, rpmNom],
+   "\ncoefEtaFu2: ", coefEtaFu2, 
+   "              ", (1 - 1/coefEtaFu2)*100 <= 1.5, "\neta: ", 
+   FuncEtaPmpFu2[mPmp2Fu, rhoPmp2FuNom, rpmNom],
+   "\nratioEtaTrb: ", ratioEtaTrb, 
+   "             ", (1 - 1/ratioEtaTrb)*100 <= 1.5, "\neta: ", 
+   FuncEtaTrb [uTrbNom/cadTrbNom]
+   ];
+
+In[312]:= checkEtaHTorque
+
+In[313]:= Plot[{intAVo1[t], intACVo1[t], intAVo2[t], intAVo3[t], intAVo4[t]}, {t, 0, 5},
+  PlotStyle -> {RGBColor[1, 0.5, 0], RGBColor[0.8, 0.5, 0], 
+   RGBColor[0.5, 0.7, 1], Red}, PlotLegends -> LineLegend["Expressions"]]
+
+In[314]:= Plot[{intAVf1[t], intAVf2[t], intAVf3[t], intACVf1[t], intACVf2[t], 
+  intACVf3[t], intACVf4[t]}, {t, 0, 5}, 
+ PlotStyle -> {RGBColor[1, 0.5, 0], RGBColor[0.8, 0.5, 0]}, 
+ PlotLegends -> LineLegend["Expressions"]]
+
+In[315]:= dfImportList12 = Delete[Import[pathToImportData, {"Data", 12}], 1];
+dfImportList13 = Delete[Import[pathToImportData, {"Data", 13}], 1];
+
+In[317]:= defSortList[ImportList_] := Block[{listii, result}, {
+    result = {};
+    Do[listii = {};
+     Do[
+      If[ToString[Head[ImportList[[i, j]]]] ==  ToString[Real],
+       AppendTo[listii, Round[ImportList[[i, j]]]],
+       AppendTo[listii, ImportList[[i, j]]]],
+      {j, Length[ImportList[[1]]]}]; 
+     AppendTo[result, listii], {i, Length[ImportList]}];
+    result
+    }][[1]]
+
+In[318]:= dfListPipLine = defSortList[dfImportList12];
+dfListVlvLine = defSortList[dfImportList13];
+
+In[320]:= dfListPipLine // TableForm;
+dfListVlvLine // TableForm;
+
+In[322]:= defCreateEqPipLine[listNameTXTnodes_, typeEquation_] := 
+ Block[{result, equation, name1, name2, component, nameVar, resis, m, inert, 
+    Dm, rho, p1, p2, elif, name, nameMassFlow}, {
+    result = Reap[Do[
+         name1 = ToString[i[[1]]];
+         name2 = ToString[i[[2]]];
+         component = ToString[i[[3]]];
+         
+         nameVar = component <> name1 <> "x" <> name2;
+         resis = "r" <> nameVar;
+         m = "m" <> nameVar;
+         inert = "i" <> nameVar;
+         Dm = "Dm" <> nameVar;
+         rho = 
+          If[component == "o", "rhoOx", 
+           If[component == "f", "rhoFu"]](*component*);
+         p1 = "p" <> component <> name1;
+         p2 = 
+          If[name2 == "Ic" || name2 == "Ch", "pCh", 
+           If[name2 == "Ig" || name2 == "Gg", "pGg", 
+            "p" <> component <> name2]] ;
+         
+         If[typeEquation == "Dm",
+          
+          equation = 
+            Dm <> " =((" <> p1 <> "-" <> p2 <> "-" <> resis <> "/" <> rho <> 
+             " * Abs[" <> m <> "]* " <> m <> ")/" <> inert <> ")";];
+         If[typeEquation == "resis",
+           
+          equation = 
+           resis <> " =Abs[((" <> p1 <> "-" <> p2 <> ")*" <> rho <> "/" <> m <>
+             "^2)]"];
+         
+         Sow[equation];
+         , {i, listNameTXTnodes}];][[2]];
+    result
+    }][[1, 1]]
+
+In[323]:= defCreateEqVlvLine[listNameTXTnodes_, typeEquation_] := 
+ Block[{result, equation1, equation2, equation3, name1, name2, name3, 
+    component, nameVar1, nameVar2, nameVar3, resis1, resisValve, resis2, m, 
+    inert, Dm, rho, p11, p12, p21, p22, elif, name, nameMassFlow}, {
+    result = Reap[Do[
+         name1 = ToString[i[[1]]];
+         name2 = ToString[i[[2]]];
+         name3 = ToString[i[[3]]];
+         component = ToString[i[[4]]];
+         
+         nameVar1 = component <> name1 <> "x" <> name2;
+         nameVar2 = component <> name2 <> "x" <> name3;
+         nameVar3 = component <> name1 <> "x" <> name3;
+         resis1 = "r" <> nameVar1;
+         resisValve = "r" <> name2;
+         resis2 = "r" <> nameVar2;
+         m = "m" <> nameVar3;
+         inert = "i" <> nameVar3;
+         rho = If[component == "o", "rhoOx", If[component == "f", "rhoFu"]];
+         
+         p11 = "p" <> component <> name1;
+         p12 = "p" <> name2 <> "In"; ;
+         
+         p21 = "p" <> name2 <> "Out";
+         p22 = 
+          If[name3 == "Ic" || name3 == "Ch", "pCh", 
+           If[name3 == "Ig" || name3 == "Gg", "pGg", 
+            "p" <> component <> name3]] ;
+         
+         If[typeEquation == "resis",
+           
+          equation1 = 
+           resis1 <> " =((" <> p11 <> "-" <> p12 <> ")*" <> rho <> "/" <> m <>
+             "^2)";
+          
+          equation2 = 
+           resisValve <> " =((" <> p12 <> "-" <> p21 <> ")*" <> rho <> "/" <> 
+            m <> "^2)";
+           
+          equation3 = 
+           resis2 <> " =((" <> p21 <> "-" <> p22 <> ")*" <> rho <> "/" <> m <>
+             "^2)"];
+         Sow[{equation1, equation2, equation3}];
+         , {i, listNameTXTnodes}];][[2]];
+    result
+    }][[1, 1]]
+
+In[324]:= defCreateEqPipLine[dfListPipLine, "resis"] // ToExpression
+(*defCreateEqPipLine[dfListPipLine,"Dm"]//ToExpression*)
+
+In[325]:= defCreateEqVlvLine[dfListVlvLine, "resis"] // ToExpression
+
+In[326]:= ToExpression[defCreateEqVlvLine[dfListVlvLine, "resis"]] // TableForm
+
+In[327]:= {rVf1Nom, rVo1Nom} = {rVf1, rVo1};
+
+In[328]:= interpZSpringOtSilaSpring[silaSpring_] := 
+ Block[{}, {InterpolatingFunction[{{1.67, 
+       2.25}}, {5, 7, 0, {2}, {2}, 0, 0, 0, 0, Automatic, {}, {}, False}, {{
+       1.67, 2.25}}, {Developer`PackedArrayForm, {0, 1, 2}, {0.033, 
+        0.227}}, {Automatic}][silaSpring]*10^3}][[1]]
+
+In[329]:= (* Расчет вспомогательных величин *)
+fSeat = 0.25*Pi*diamSeat^2; (*Площадь седла клапана *)
+fConnectorIn = 
+  0.25*Pi*diamConnectorIn^2; (* Площадь проходного сечения входного патрубка *)
+masMovingParts = masFlap + masSpring/3.; (* Масса подвижных частей *)
+
+fBodyInter = 
+  0.25*Pi*diamBodyInter^2; (* Площадь по внутреннему диаметру корпуса *)
+
+fFlapExter = 0.25*Pi*diamFlapExter^2; (*Площадь тарели клапана *)
+fGapBodyFlap = 
+  fBodyInter - 
+   fFlapExter; (* Площадь кольцевого зазора между корпусом и клапаном *)
+
+fStemFlap = 0.25*Pi*diamStemFlap^2 ; (*Площадь штока клапана *)
+
+
+In[336]:= {fGapBodyFlapCV01, fSeatCV01, masMovingPartsCV01, fFlapExterCV01} = 
+ defCheckVal[diamSeatCV01, diamBodyInterCV01, diamFlapExterCV01, 
+  diamConnectorInCV01, masFlapCV01, masSpringCV01, diamStemFlapCV01]
+
+Out[336]= {0.0000111841, 0.0000785398, 0.0181, 0.000243285}
+
+In[337]:= {xValCV01p1Fu, DxValCV01p1Fu, D2xCV01p1Fu} = {0., 0., 0.};
+{xValCV01p4Fu, DxValCV01p4Fu, D2xValvCV01p4Fu} = {0., 0., 0.};
+
+In[339]:= funcCheckValveCV01[p1_, p2_, u_, x_] := Block[{result}, {
+    result = 
+     funcCheckValve[p1, p2, u, x, xFlapMaxCV01, fGapBodyFlapCV01, 
+      fFlapExterCV01, diamSeatCV01, silaSpring0CV01, zSpringCV01, 
+      myuThrotCV01, fSeatCV01, silaFrictStaticCV01, silaFrictKineticCV01, 
+      coefPropFrictViscousCV01, masMovingPartsCV01, FTREN, coefSilaFlowCV01
+      ];
+    result
+    }][[1]]
+
+In[340]:= funcCheckValveCalcResisOtXCV01[x_, coefCorectivResis_] := Block[{result}, {
+    result = 
+     funcCheckValveCalcResisOtX[x, diamSeatCV01, fGapBodyFlapCV01, 
+      coefCorectivResis];
+    result
+    }][[1, 1]]
+
+In[341]:= 
+funcConditionsXDxVal[0, -1, xFlapMaxCV01]
+
+Out[341]= {0., 0.}
+
+In[342]:= aCVo1 = funcCheckValveCV01[pCVo1In, pCVo1Out, 1, xFlapMax][[3]];
+
+aCVf1 = funcCheckValveCV01[pCVf1In, pCVf1Out, 1, xFlapMax][[3]];
+aCVf2 = funcCheckValveCV01[pCVf2In, pCVf2Out, 1, xFlapMax][[3]];
+aCVf3 = funcCheckValveCV01[pCVf3In, pCVf3Out, 1, xFlapMax][[3]];
+aCVf4 = funcCheckValveCV01[pCVf4In, pCVf4Out, 1, xFlapMax][[3]];
+
+In[347]:= coefRCVo1 = rCVo1*aCVo1^2;
+coefRCVf1 = rCVf1*aCVf1^2;
+coefRCVf2 = rCVf2*aCVf2^2;
+coefRCVf3 = rCVf3*aCVf3^2;
+coefRCVf4 = rCVf4*aCVf4^2;
+
+Grid[{{"coefRCVo1", coefRCVo1}, {"coefRCVf1", coefRCVf1}, {"coefRCVf2", 
+   coefRCVf2}, {"coefRCVf3", coefRCVf3}, {"coefRCVf4", coefRCVf4}}, 
+ Frame -> All, Alignment -> Left]
+
+In[353]:= defDmForPNode [listIn_, eqInOrOut_] := Block[{result, p, m, a, J, rho}, {
+    {p, m, a, J, rho} = listIn;
+    If[eqInOrOut == "In", result = (p - (a/rho)*Abs[m]*m)*(1/J),
+     If[eqInOrOut == "Out", result = (p + (a/rho)*Abs[m]*m)*(1/J)]
+     ];
+    result
+    }][[1]]
+defJInNode [list_] := Block[{result}, {
+    result = Reap[Do[Sow[1/i[[4]]], {i, list}]][[2, 1]];
+    result
+    }][[1]]
+defPNod [listIn_, listOut_] := Block[{result, listABC, A, B, C, num, deNum}, {
+    A = Reap[
+       Do[Sow[defDmForPNode [{listIn[[i, 1]], listIn[[i, 2]], listIn[[i, 3]], 
+           listIn[[i, 4]], listIn[[i, 5]]}, "In"]], {i, Length[listIn]}]][[2, 
+      1]];
+    B = Reap[
+       Do[Sow[defDmForPNode [{listOut[[i, 1]], listOut[[i, 2]], listOut[[i, 3]],
+            listOut[[i, 4]], listOut[[i, 5]]}, "Out"]], {i, 
+         Length[listOut]}]][[2, 1]];
+    num = Join[A, B] // Total;
+    deNum = Join[defJInNode [listIn], defJInNode [listOut]] // Total;
+    result = num/deNum;
+    (*{num,deNum}*)
+    result
+    }][[1]]
+
+In[356]:= (*Pause[10]*)
+
+In[357]:= resultPrint = {};
+resultPrintNew = {};
+numItemPrint = 0;
+TIME = 0;        (* Начало интервала интегрирования *)
+stepPrint = Max[IntegerPart[endTime/dt/countPrint], 1];
+n = IntegerPart[endTime/dt];
+
+In[363]:= {kmCh , kmGg } = {0, 0};
+
+In[364]:= {flagVo1, flagVo2, flagVo3, flagVo4, flagVf1, flagVf2, flagVf3} = {0, 0, 0, 0,
+    0, 0, 0};
+
+
+In[365]:= {masbf, masbo} = {0, 0};
+
+In[366]:= pCh = pEnv;
+pGg = pEnv;
+pGv = pEnv;
+pCh = pEnv;
+rpm = 1; omega = 1*\[Omega];
+
+In[371]:= {mPmpOxOut, mPmp1FuOut, mPmp2FuOut} = {(*mo2x3+mo2xTrbOut,mf2xCh+mf3x4+
+   mfChCool,mf3x4*)0, 0, 0};
+
+In[372]:= {pf1, pf2, pf3, pf4, pf5, pf6, pf7} = {pfT, pfT, pfT, pfT, pfB, pfB, pfB};
+{po1, po2, po3, po4} = {poT, poT, poT, poB};
+{mfTx1, mf2xCh, mf3x4, mf4x6, mf6xIc, mf4x5, mf5xIg, mfBx7, mf7x6, 
+   mf7x5} = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+{moTx1, mo2x3, mo3xGg, mo3x4, mo4xIc, mo4xIg, moBx4, mo2xGg, mo3xTrbIn, 
+   mo2xTrbOut, mfChCool} = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+{moGg, mfGg, moCh, mfCh} = {0, 0, 0, 0};
+{mf2xChFill, mf2xChJet, mo2xGgFill, mo2xGgJet} = {0, 0, 0, 0};
+{volVf1xCh, volVo1xGg(*,volVo1x3,volo3xGg,volo3xCVo1*)} = {0, 0(*,0,0,0*)};
+
+In[379]:= {DxCVf1, DxCVf2, DxCVf3, DxCVf4, DxCVo1,
+   DuCVf1, DuCVf2, DuCVf3, DuCVf4, DuCVo1,
+   Dmasbf, Dmasbo,
+   Dpf1, Dpf2, Dpf3, Dpf4, Dpf5, Dpf6, Dpf7, DpoB, Dpo1, Dpo2, Dpo3, Dpo4, 
+   DpGg, DpGv, DpCh,
+   DmfTx1, Dmf2xCh, Dmf3x4, Dmf4x6, Dmf6xIc, Dmf4x5, Dmf5xIg, DmfBx7, Dmf7x6, 
+   Dmf7x5, DmoTx1, Dmo2x3, Dmo3xGg, Dmo2xGg, Dmo3x4, Dmo4xIc, Dmo4xIg, DmoBx4,
+   DvolVf1xCh, DvolVo1xGg,
+   Domega} = ConstantArray[0, Length[{DxCVf1, DxCVf2, DxCVf3, DxCVf4, DxCVo1,
+     DuCVf1, DuCVf2, DuCVf3, DuCVf4, DuCVo1,
+     Dmasbf, Dmasbo,
+     Dpf1, Dpf2, Dpf3, Dpf4, Dpf5, Dpf6, Dpf7, DpoB, Dpo1, Dpo2, Dpo3, Dpo4, 
+     DpGg, DpGv, DpCh,
+     DmfTx1, Dmf2xCh, Dmf3x4, Dmf4x6, Dmf6xIc, Dmf4x5, Dmf5xIg, DmfBx7, 
+     Dmf7x6, Dmf7x5, DmoTx1, Dmo2x3, Dmo3xGg, Dmo2xGg, Dmo3x4, Dmo4xIc, 
+     Dmo4xIg, DmoBx4,
+     DvolVf1xCh, DvolVo1xGg,
+     Domega}]];
+
+In[380]:= defCalcFValve[resis_] := Block[{result}, {
+    result = 1/Sqrt[resis 2];
+    result
+    }][[1]]
+
+In[382]:= {flagBurnGg, flagBurnGgSTOP, flagBurnCh, flagBurnChSTOP} = {0, 0, 0, 0};
+
+In[383]:= {pMax, pMinFu, pMinOx} = {pPmp2OutFuNom*1.2, interpPressureVaporFu[293], 
+   interpPressureVaporOx[90]};
+
+In[384]:= {RGg, RGv, RCh} = {REnv, REnv, REnv};
+{TGg, TGv, TCh} = {TEnv, TEnv, TEnv};
+{mGg, mGv, mCh} = {0, 0, 0};
+
+
+{flagTauGg, flagTauGgOx, flagTauGgFu, flagAdTauCh, flagTauChFu, 
+   flagTauChFuGen} = {0, 0, 0, 0, 0, 0};
+{timeAdTauGg, tBurnGg, tBurnCh, timeAdTauCh, tStpGg, tStpCh} = {100, 100, 100,
+    100, 100, 100};
+
+
+In[389]:= mLeakOx = (1.1 + 1.24 + 0.385)*10^-3*rhoOx;
+mLeakFu1 = (3.37 + 4.42)*10^-4*rhoFu;
+mLeakFu2 = (1.24 + 2.78)*10^-4*rhoFu;
+{mLeakOxNom, mLeakFu1Nom, mLeakFu2Nom} = {mLeakOx, mLeakFu1, mLeakFu2};
+
+In[393]:= {xCVf1, xCVf2, xCVf3, xCVf4, xCVo1} = {0, 0, 0, 0, 0};
+{uCVf1, uCVf2, uCVf3, uCVf4, uCVo1} = {0, 0, 0, 0, 0};
+{aCVo1, aCVf2, aCVf1, aCVf3, aCVf4} = {10^-10, 10^-10, 10^-10, 10^-10, 10^-10};
+{rCVo1, rCVf2, rCVf1, rCVf3, rCVf4} = {10^-20, 10^-20, 10^-20, 10^-20, 10^-20};
+
+In[397]:= {etaPmp1Fu, etaPmp2Fu, etaPmpOx} = {1, 1, 1};
+{kGg, kGv, kCh} = {1.4, 1.4, 1.4};
+
+In[399]:= {flagFillVf1xCh, flagValOpenVf1, flagFillVo1xGg, flagValOpenVo1} = {0, 0, 0, 
+   0};
+
+In[400]:= defConfinesAll[t_] := Block[{},
+  {
+   (*PRESSURE*)
+   {po1, po2, po3, po4} = 
+    Min[Max[#, pEnv(*interpPressureVaporFu[293]*)], pMax] & /@ {po1, po2, po3,
+       po4};
+   {pf1, pf2, pf3, pf4, pf5 , pf6, pf7} = 
+    Min[Max[#, pEnv(*interpPressureVaporFu[293]*)], pMax] & /@ {pf1, pf2, pf3,
+       pf4, pf5 , pf6, pf7};
+   {pGg, pGv, pCh} = Min[Max[#, pEnv], pMax] & /@ {pGg, pGv, pCh};
+   (*{po4}=Min[#,poB]&/@{po4};*)
+   (*{pGg}=Max[Min[#,p3Fu],pEnv]&/@{pGg};*)
+   (*VOLUME*)
+   {DvolVf1xCh, DvolVo1xGg} = Max[#, 0] & /@ {DvolVf1xCh, DvolVo1xGg};
+   {volVf1xCh} = Min[Max[#, 0], volVf1xChNom] & /@ {volVf1xCh};
+   {volVo1xGg} = Min[Max[#, 0], volVo1xGgNom] & /@ {volVo1xGg};
+   (*MASS FLOW*)
+   {moTx1, mo2x3, mo3xGg, mo3x4(*,mo4xIc*)(*moBx4,*)(*mo4xIg*)} = 
+    Max[#, 0] & /@ {moTx1, mo2x3, mo3xGg, mo3x4(*,mo4xIc*)(*moBx4,*)(*mo4xIg*)};
+   {mfTx1, mf2xCh, mf3x4, mf4x6, mf4x5, mfBx7, mf7x5, mf5xIg,(*mf7x6,*)
+     mf6xIc} = 
+    Max[#, 0] & /@ {mfTx1, mf2xCh, mf3x4, mf4x6, mf4x5, mfBx7, mf7x5, 
+      mf5xIg,(*mf7x6,*)mf6xIc};
+   {mPmpOxOut, mPmp1FuOut, mPmp2FuOut} = {mo2x3 + mo2xTrbOut, 
+     mf2xChFill + mf3x4 + mfChCool, mf3x4};
+   {(*mo4xIg,*)mf5xIg, mf7x5} = Min[#, 200] & /@ {(*mo4xIg,*)mf5xIg, mf7x5};
+   {mo4xIg, mf5xIg, mf7x5} = Max[#, -100] & /@ {mo4xIg, mf5xIg, mf7x5};
+   (*OTHER*)
+   {omega} = Max[#, 1] & /@ {omega};
+   {xCVf1, xCVf2, xCVf3, xCVf4, xCVo1} = 
+    Min[Max[#, 0], xFlapMax] & /@ {xCVf1, xCVf2, xCVf3, xCVf4, xCVo1};
+   }]
+
+In[401]:= defCorrection[if_] := Block[{},
+  {
+    (*If[2\[LessEqual]if(*\[LessEqual] 2.5*),pCh=pChNom];*)
+    };]
+
+In[402]:= defConditionsAll[t_] := Block[{},
+  {
+   If[t < tVf21, mf5xIg = 0];
+   If[t < tVf31, mf6xIc = 0];
+   If[t < tVo31, mo4xIg = 0];
+   If[t < tVo41, mo4xIc = 0];
+   (*Gg*)
+   If[flagTauGgOx == 0 && mo4xIg > mGgOxMin, flagTauGgOx = 1; 
+    Print["Расход окислителя в ГГ пришел на: ", t // N, " секунде"]];
+   If[flagTauGgFu == 0 && mf5xIg > mGgFuMin,(*Print["STOP"];Pause[10];*) 
+    flagTauGgFu = 1; 
+    Print["Расход горючего в ГГ пришел на: ", t // N, " секунде"]];
+   If[flagTauGg == 0 && flagTauGgOx == 1 && flagTauGgFu == 1, 
+    timeAdTauGg = t + timeDelayIgnGg; flagTauGg = 1;
+    Print["Оба компонента поступили в ГГ на: ", t // N]];
+   If[flagBurnGg == 0 && flagTauGg == 1 && t >= timeAdTauGg(*&& pPmp2OutFu\[GreaterEqual] 
+    50*10^5*\[Delta]P && pPmpOutOx\[GreaterEqual]50*10^5*\[Delta]P*), 
+    flagBurnGg = 1; Print["Начало горения в ГГ на: ", t // N]; 
+    tBurnGg = t // N];
+   If[flagBurnGgSTOP == 1, pGg = pEnv; pTrbIn = pEnv];
+   (*Ch*)
+   If[flagTauChFuGen == 0 && mf2xCh > mChFuGenMin, flagTauChFuGen = 1; 
+    Print["Расход горючего от Pmp1Fu в КС пришел на: ", t // N, " секунде"]];
+   If[flagTauChFu == 0 && mf6xIc > mChIngFuMin, flagTauChFu = 1; 
+    Print["Расход горючего от Pmp2Fu в КС пришел на: ", t // N, " секунде"]];
+   If[flagAdTauCh == 0 && flagTauChFu == 1 && flagBurnGg == 1, 
+    timeAdTauCh = t + timeDelayIgnCh; flagAdTauCh = 1];
+   If[flagBurnCh == 0 && flagTauChFu == 1 && flagBurnGg == 1 && 
+     t >= timeAdTauCh, flagBurnCh = 1; 
+    Print["Начало горения в КС на: ", t // N]; tBurnCh = t // N];
+   If[flagBurnChSTOP == 1, pCh = pEnv];
+   
+   (*Заполнения*)
+   If[tZapolnAll == 0 && flagFill2ToChFu == 1, tZapolnAll = t];
+   }]
+
+In[403]:= {flagFillVf1xCh, flagValOpenVf1} = {0, 0};
+{flagFillVo1xGg, flagValOpenVo1} = {0, 0};
+
+In[405]:= defTagAndPrint[t_] := Block[{},
+   {
+    }];
+
+In[406]:= listVarForCreateDict = 
+  "rpm,omega,po1,po2,po3,po4,pf1,pf2,pf3,pf4,pf5,pf6,pf7,pGg,pGv,pCh,moTx1,mo2\
+x3,mo3xGg,mo3xTrbIn,mo3x4,mo4xIg,mo4xIc,moBx4,mfTx1,mf2xCh,mf3x4,mf4x5,mf4x6,m\
+f5xIg,mf6xIc,mfBx7,mf7x5,mf7x6,mGg,mGv,mCh,mfGg,moGg,mo2xTrbOut,mfCh,moCh,kmGg\
+,kmCh,kGg,kGv,kCh,RGg,RGv,RCh,TGg,TGv,TCh,volVf1xCh,xCVf1,xCVf2,xCVf3,xCVf4,xC\
+Vo1,mo2xGgJet,poB,pfB,rVf2,rVo3,ro4xIg,ro4xVo3,roVo3xIg,Dmo4xIg,Dmf2xCh";
+
+
+myDictForSaveResultsTXT = defCreateDict[listVarForCreateDict];
+
+
+
+In[408]:= Prav[t_, y_] := Block[{
+   (* Valve *)
+   xCVf1, xCVf2, xCVf3, xCVf4, xCVo1,
+   uCVf1, uCVf2, uCVf3, uCVf4, uCVo1,
+   (* mass *)    
+   masbf, masbo,               
+   (* pressure *)
+   pf1, pf4, pf5, pf6, pf7, poB, po1, po3, po4, pGg, pGv, pCh,
+   (* mass flow rate *)
+   mfTx1, mf2xCh, mf3x4, mf4x6, mf6xIc, mf4x5, mf5xIg, mfBx7, mf7x6, mf7x5, 
+   moTx1, mo2x3, mo3xGg, mo2xGg, mo3x4, mo4xIc, mo4xIg, moBx4,
+   (* volume *)
+   volVf1xCh, volVo1xGg,
+   (* Other *)
+   omega
+   }, {{
+                xCVf1, xCVf2, xCVf3, xCVf4, xCVo1,
+                uCVf1, uCVf2, uCVf3, uCVf4, uCVo1,    
+                masbf, masbo,               
+                pf1, pf4, pf5, pf6, pf7, poB, po1, po3, po4, pGg, pGv, pCh,
+                mfTx1, mf2xCh, mf3x4, mf4x6, mf6xIc, mf4x5, mf5xIg, mfBx7, 
+                mf7x6, mf7x5, moTx1, mo2x3, mo3xGg, mo2xGg, mo3x4, mo4xIc, 
+                mo4xIg, moBx4,
+                volVf1xCh, volVo1xGg,
+                omega} = y;
+              defConfinesAll[t];
+              defConditionsAll[t];
+              (* Зануляем производные *)
+              {DxCVf1, DxCVf2, DxCVf3, DxCVf4, DxCVo1,
+                DuCVf1, DuCVf2, DuCVf3, DuCVf4, DuCVo1,
+                Dmasbf, Dmasbo,               
+                Dpf1, Dpf4, Dpf5, Dpf6, Dpf7, DpoB, Dpo1, Dpo3, Dpo4, DpGg, 
+                DpGv, DpCh,
+                DmfTx1, Dmf2xCh, Dmf3x4, Dmf4x6, Dmf6xIc, Dmf4x5, Dmf5xIg, 
+                DmfBx7, Dmf7x6, Dmf7x5, DmoTx1, Dmo2x3, Dmo3xGg, Dmo2xGg, 
+                Dmo3x4, Dmo4xIc, Dmo4xIg, DmoBx4,
+                DvolVf1xCh, DvolVo1xGg,
+                Domega
+                } = ConstantArray[0, Length[y]];
+              (* Система уравнений *)
+              iterRunge = iterRunge + 1;
+              rpm = omega/\[Omega] // N;
+              													(*! BALLONs !*)
+              									(* Ballon Fu *)
+              Dmasbf = -mfBx7;  (*DmasBall*)
+              volfB = volfBNom - Abs[masbf]/rhofB;
+              pfB = pfBNom(*If[volfB\[LessEqual] volfBNom*0.01,pEnv,pfBNom]*);
+              									(* Ballon Ox *)
+              poB = poBNom; ToB = ToBNom;
+              koB = interpKOxygen[poB, ToB];
+              ToB = ToB0*(poB/poBNom)^((koB - 1.)/koB); (* 
+              Температура газа в баллоне *)
+              voloB = voloBNom - Abs[masbo]/rhooB;
+              Dmasbo = -(moBx4);(*DmasBall*)
+              DpoB = 0(*-koB*RoB*ToB/voloBNom*(moBx4)*);(* 
+              DpBall-производная dPb/dt *)
+              
+              													(*! Line FUEL !*)
+              
+              DmfTx1 = ((pfT - pf1 - rfTx1/rhoFu * Abs[mfTx1]* mfTx1)/
+                 ifTx1);(* -Dm- *);
+              mfChCool = mfChCoolNom*(mf2xCh/mf2xChNom);
+              Dpf1 = (mfTx1 - mf2xCh - mfChCool - mf3x4)/Cfp1cav;(* -Dp- *);
+             										(*! pump _1_ FU !*);
+             
+             HfPmp1 = FuncHPmp1Fu[mf2xCh + mfChCool + mf3x4, rhoFu, 
+               omega/\[Omega]];
+             cfCavPmp1R1Fu = 0;
+             cfCavPmp1R2Fu = 0;
+             inertRevPmp1Fu = 0;
+             pf2 = pf1 + HfPmp1 *coefHfPmp1;
+             {flagFillVf1xCh, flagValOpenVf1, Dmf2xCh, DvolVf1xCh, mf2xChFill,
+                mf2xChJet} = 
+              funcFilling[{flagFillVf1xCh, flagValOpenVf1}, t, 
+               tVf11 < t <=  (tVf12 + dtVf12), volVf1xCh, volVf1xChNom, 
+               "магістраль ПАЛЬНОГО на КЗ заповнена на: ", rVf1Nom, aVf1Max, 
+               rf2xVf1, rfVf1xCh, if2xCVf1, ifCVf1xCh, pf2, pCh, mf2xCh, 
+               rhoFu, intAVf1, 1, 4];
+             										(*! pump _2_ FU !*);
+             HfPmp2 = FuncHfPmp2[mf3x4, rhoFu, omega/\[Omega]];
+             cfCavPmp2R1Fu = 0;
+             cfCavPmp2R2Fu = 0;
+             inertRevPmp2Fu = 0;
+             pf3 = pf2 + HfPmp2 *coefHfPmp2;
+             							(* Ділянка від Насоса2  *)
+             
+             Dmf3x4 = (pf3 - pf4 - (rf3x4/rhoFu)*Abs[mf3x4] *mf3x4)*(1/
+                 if3x4);(*Dmf3x4*)
+             
+             rCVf2 = funcCheckValveCalcResisOtXCV01[xCVf2, coefRCVf2];
+             rf4x6 = rf4xCVf2 + rCVf2 + rfCVf2x6;
+             
+             Dmf4x6 = (pf4 - pf6 - (rf4x6/rhoFu)*Abs[mf4x6]*mf4x6)*(1/
+                 if4x6);(*Dmf4x6*)
+             
+             rVf3 = 1/(2*intAVf3[t]^2);
+             rf6xIc = rf6xVf3 + rVf3;
+             
+             Dmf6xIc = (pf6 - pCh - (rf6xIc/rhoFu)*Abs[mf6xIc]*mf6xIc)*(1/
+                 if6xIc);(*Dmf6xIc*)
+             
+             
+             Dmf7x6 = (pf7 - pf6 - (rf7x6/rhoFu)*Abs[mf7x6]*mf7x6)*(1/
+                 if7x6);(*Dmf7x6*)
+             
+             rCVf1 = funcCheckValveCalcResisOtXCV01[xCVf1, coefRCVf1];
+             rf4x5 = rf4xCVf1 + rCVf1 + rfCVf1x5;
+             
+             Dmf4x5 = (pf4 - pf5 - (rf4x5 /rhoFu)*Abs[mf4x5]*mf4x5)*(1/
+                 if4x5);(*Dmf4x5*)
+             
+             rVf2 = 1/(2*intAVf2[t]^2);
+             rf5xIg = rf5xVf2 + rVf2;
+             
+             Dmf5xIg = (pf5 - pGg - (rf5xIg/rhoFu)*Abs[mf5xIg]*mf5xIg)*(1/
+                 if5xIg);(*Dmf5xIg*)
+             
+             rCVf3 = funcCheckValveCalcResisOtXCV01[xCVf3, coefRCVf3];
+             rfBx7 = rfBxCVf3 + rCVf3 + rfCVf3x7;
+             
+             DmfBx7 = (pfB - pf7 - (rfBx7/rhoFu)*Abs[mfBx7]*mfBx7)*(1/
+                 ifBx7);(*DmfBx7*)
+             
+             rCVf4 = funcCheckValveCalcResisOtXCV01[xCVf4, coefRCVf4];
+             rf7x5b = rf7xCVf4 +(*rCVf4+*)rfCVf4x5b;
+             
+             Dmf7x5 = (pf7 - pf5 - (rf7x5b /rhoFu)*Abs[mf7x5]*mf7x5)*(1/
+                 if7x5);(*Dmf7x5*)
+             
+             Dpf4 = (mf3x4 - mf4x6 - mf4x5)*(1/Cf4)(*+coefEpsf4(Dmf3x4-Dmf4x6-
+             Dmf4x5)*);(*Dpf4*)
+             Dpf6 = (mf4x6 + mf7x6 - mf6xIc)*(1/Cf6)(*+coefEpsf6(Dmf4x6+
+             Dmf7x6-Dmf6xIc)*);(*Dpf6*)
+             Dpf5 = (mf4x5 + mf7x5 - mf5xIg)*(1/Cf5)(*+coefEpsf5(Dmf4x5+
+             Dmf7x5-Dmf5xIg)*);(*Dpf5*)
+             Dpf7 = (mfBx7 - mf7x6 - mf7x5)*(1/Cf7)(*+coefEpsf7(DmfBx7-Dmf7x6-
+             Dmf7x5)*);(*Dpf7*)
+             	(* AREA *)	
+             defConditionsAll[t];
+             	(* AREA CV01.2 (Ch) *)
+             
+             pCVf2In = 
+              pf4 - (rf4xCVf2/rhoFu)*Abs[mf4x6]*mf4x6 - 
+               If[mf4x6 > 0 , if4xCVf2, 0]*Dmf4x6;
+             
+             pCVf2Out = 
+              
+              pf6 + (rfCVf2x6/rhoFu)*Abs[mf4x6]*mf4x6 + 
+               If[mf4x6 > 0, ifCVf2x6, 0]*Dmf4x6;
+             {DxCVf2, DuCVf2, aCVf2(*,forceCVf2In,forceCVf2Out ,forceCVf2x,
+               forceSprngCVf2,forceSumCVf2*)} = 
+              funcCheckValveCV01[pCVf2In, pCVf2Out, uCVf2, xCVf2];		
+             		(* AREA CV01.4 (Gg) *)
+             
+             pCVf1In = 
+              pf4 - (rf4xCVf1/rhoFu)*Abs[mf4x5]*mf4x5 - 
+               If[mf4x5 > 0, if4xCVf1, 0]*Dmf4x5;
+             
+             pCVf1Out = 
+              pf5 + (rfCVf1x5/rhoFu)*Abs[mf4x5]*mf4x5 + 
+               If[mf4x5 > 0, ifCVf1x5, 0]*Dmf4x5;
+             {DxCVf1, DuCVf1, aCVf1(*,forceCVf1In,forceCVf1Out,forceCVf1x,
+               forceSprngCVf1,forceSumCVf1*)} = 
+              funcCheckValveCV01[pCVf1In, pCVf1Out, uCVf1, xCVf1];
+             		(* AREA CV01.3 (Ball) *)
+             
+             pCVf3In = 
+              pfB - (rfBxCVf3/rhoFu)*Abs[mfBx7]*mfBx7 - 
+               If[mfBx7 > 0, ifBxCVf3, 0]*DmfBx7;
+             
+             pCVf3Out = 
+              pf7 + (rfCVf3x7/rhoFu)*Abs[mfBx7]*mfBx7 + 
+               If[mfBx7 > 0, ifCVf3x7, 0]*DmfBx7;
+             {DxCVf3, DuCVf3, aCVf3(*,forseCVf3In,forseCVf3Out,forseCVf3x,
+               forseSprngCVf3,forseSumCVf3*)} = 
+              funcCheckValveCV01[pCVf3In, pCVf3Out, uCVf3, xCVf3];		
+             		(* AREA CV01.5 (BallGg) *)
+             
+             pCVf4In = 
+              pf7 - (rf7xCVf4/rhoFu)*Abs[mf7x5]*mf7x5 - 
+               If[mf7x5 > 0, if7xCVf4, 0]*Dmf7x5;
+             
+             pCVf4Out = 
+              pf5 + (rfCVf4x5b/rhoFu)*Abs[mf7x5]*mf7x5 + 
+               If[mf7x5 > 0, ifCVf4x5, 0]*Dmf7x5;
+             {DxCVf4, DuCVf4, aCVf4(*,forseCVf4In,forseCVf4Out ,forseCVf4x,
+               forseSprngCVf4,forseSumCVf4*)} = 
+              funcCheckValveCV01[pCVf4In, pCVf4Out, uCVf4, xCVf4];
+             
+             			(*! Line OXYGEN !*)
+             (* Pump line *)
+             
+             DmoTx1 = ((poT - po1 - roTx1/rhoOx * Abs[moTx1]* moTx1)/
+                ioTx1);(* -Dm- *);
+             mo2xTrbOut = mo2xTrbOutNom*(mo2x3/mo2x3Nom);
+             mPmpOutOx = mo2x3 + mo2xTrbOut;
+             Dpo1 = (moTx1 - mo2x3 - mo2xTrbOut)/Cfp1cav;(* -Dp- *);
+            												(* ! pump _OX ! *);
+            HoPmp = FuncHoPmp[mo2x3 + mo2xTrbOut, rhoOx, omega/\[Omega]];
+            (* Cavitation \[DownArrow] *)
+            cfCavPmpR1Ox = 0;
+            cfCavPmpR2Ox = 0;
+            inertRevPmpOx = 0;
+            po2 = po1 + HoPmp *coefHoPmp;
+            
+            (* Ballon line *)
+            rVo2 = 1/(2*intAVo2[t]^2);
+            roBx4 = roBxVo2 + rVo2 + roVo2x4;
+            
+            DmoBx4 = (poB - po4 - (roBx4/rhoOx)*Abs[moBx4]*moBx4)*(1/
+                ioBx4);(*DmfBx7*)
+            
+            rVo3 = 1/(2*intAVo3[(*0*)t]^2);
+            ro4xIg = ro4xVo3 + rVo3 + roVo3xIg;
+            
+            Dmo4xIg = (po4 - pGg - ro4xIg/rhoOx*Abs[mo4xIg]*mo4xIg)*(1/
+                io4xIg);(* (10*10^5(*po4*)-1*10^5(*pGg*)-((*ro4xIg*)(*ro4xIg*)
+            1/10(*rhoOx*))*(*Abs[mo4xIg]**)1(*mo4xIg*))(**(1/
+            io4xIg)*);(*Dmf4xIg*)*)
+            
+            rVo4 = 1/(2*intAVo4[t]^2);
+            ro4xIc = ro4xVo4 + rVo4 + roVo4xIc;
+            
+            Dmo4xIc = (po4 - pCh - (ro4xIc/rhoOx)*Abs[mo4xIc]*mo4xIc)*(1/
+                io4xIc);(*Dmf4xIg*)
+            
+            If[flagFillVo1xGg == 0,
+             
+             (* Filling \[DownArrow] *)
+             {flagFillVo1xGg, flagValOpenVo1, Dmo2xGg, DvolVo1xGg, mo2xGgFill,
+                mo2xGgJet} = 
+              funcFilling[{flagFillVo1xGg, flagValOpenVo1}, t, 
+               tVo11 < t <=  (tVo12 + dtVo12), volVo1xGg, volVo1xGgNom, 
+               "Тракт ОКИСЛИТЕЛЯ до GG заполнен на ", rVo1Nom, aVo1Max, 
+               ro2xVo1, roVo1x3 + ro3xGg, io2xVo1, ioVo1x3 + io3xGg, po2, pGg,
+                mo2xGg, rhoOx, intAVo1, 1, 8];
+             {mo2x3, mo3xGg} = {mo2xGgFill, mo2xGgJet};
+             {Dmo2x3, Dmo3xGg, Dmo3x4} = {Dmo2xGg, Dmo2xGg, 0};
+             Dpo3 = 0;
+             Dpo4 = (moBx4 - mo4xIg - mo4xIc)/Co4;(* -Dp- *);
+             mo3xTrbIn = 0;,
+             
+             rVo1 = 1/(2*intAVo1[t]^2);
+             ro2x3 = ro2xVo1 + rVo1 + roVo1x3;
+             
+             Dmo2x3 = (po2 - po3 - (ro2x3/rhoFu)*Abs[mo2x3]*mo2x3)*(1/
+                 io2x3);(*Dmo2x3*)
+             
+             Dmo3xGg = (po3 - pGg - (ro3xGg/rhoFu)*Abs[mo3xGg]*mo3xGg)*(1/
+                 io3xGg);(*Dmo3xGg*)
+             rCVo1 = funcCheckValveCalcResisOtXCV01[xCVo1, coefRCVo1];
+             ro3x4 = ro3xCVo1 + rCVo1 + roCVo1x4;
+             
+             Dmo3x4 = (po3 - po4 - (ro3x4/rhoFu)*Abs[mo3x4]*mo3x4)*(1/
+                 io3x4);(*Dmo3xGg*)
+             Dpo3 = (mo2x3 - mo3xGg - mo3x4)/Co3;
+             Dpo4 = (moBx4 + mo3x4 - mo4xIg - mo4xIc)/Co4;(* -Dp- *);
+             Dmo2xGg = Dmo3xGg;
+             {mo2xGgFill, mo2xGgJet} = {mo3xGg, mo3xGg};
+             mo3xTrbIn = mo3xTrbInNom*(mo3xGg/mo3xGgNom);
+             
+             		(* AREA CV01.6-7 (Ox) *)
+             
+             pCVo1In = 
+              po3 - (ro3xCVo1/rhoFu)*Abs[mo3x4]*mo3x4 - 
+               If[mo3x4 > 0, io3xCVo1, 0]*Dmo3x4;
+             
+             pCVo1Out = 
+              po4 + (roCVo1x4/rhoFu)*Abs[mo3x4]*mo3x4 + 
+               If[mo3x4 > 0, ioCVo1x4, 0]*Dmo3x4;
+             {DxCVo1, DuCVo1, aCVo1(*,forseCVo1In,forseCVo1Out ,forseCVo1x,
+               forseSprngCVo1,forseSumCVo1*)} = 
+              funcCheckValveCV01[pCVo1In, pCVo1Out, uCVo1, xCVo1];
+             ];
+            
+            	;(* GG *);
+           	moGg = Max[mo2xGgJet + mo4xIg, 0]; mfGg = Max[mf5xIg, 1*10^-10];   
+           	moCh = Max[moGg + mo4xIc + mo2xTrbOut + mo3xTrbIn, 0]; 
+           mfCh = Max[mf5xIg + mf6xIc + mfChCool + mf2xChJet, 1*10^-10];   
+             If[flagBurnGg == 1 && flagBurnGgSTOP == 0, 
+            	 kmGg = Max[Min[moGg/mfGg, 499], 1*10^-4];
+            	RGg    = interpROxygenJetaGg[pGg, kmGg]*\[Delta]R;         
+            	TGg    = Max[interpTOxygenJetaGg[pGg, kmGg], TEnv];               
+            	kGg    = interpKOxygenJetaGg[pGg, kmGg];
+            
+            	If[t <= tBurnGg + 0.15, TGg = Max[TEnv, TGg/3]];
+            	RGv = RGg; kGv = kGg; 
+            TGv = Max[TEnv, TGg*(pGv /pGg)^((kGg - 1)/kGg)];
+            	
+            pTrbIn = dztaTrb^2* \[Sqrt]Max[(pGg^2 - 
+                  kGg*RGg*TGg*(moGg + mfGg + mo3xTrbIn)^2), 1];
+            	mGg = GGAZ[pGg, pGv,  muGg,  fGg1, TGg,  kGg,  RGg];
+            	mGv = GGAZ[pGv, pCh,  muGv,  fGv1, TGv,  kGv,  RGv];
+            	DpGg = ((RGg*TGg)/VGg)*(moGg + mfGg + mo3xTrbIn - mGg);
+            	DpGv = ((RGv*TGv)/VGv)*(mGg + mo2xTrbOut - mGv),  
+            
+            	mGg = 0; mGv = 0;
+            	kmGg = 0;
+            	kGg = 1.4;(*************)
+            	RGg = 287*\[Delta]R;(*************)
+            	TGg = TEnv;
+            	DpGg = 0;
+            	DpGv = 0;
+            	DpCh = 0;
+            ];
+           		;(* dynamic TNA *);(*mLeakOxNom,mLeakFu1Nom,mLeakFu2Nom*)
+         								;(* pumpFu1 *);
+        mfLeakP1 = mLeakFu1Nom*(rpm/rpmNom); 
+        etaPmp1Fu = 
+         FuncEtaPmpFu1[mf2xCh + mfChCool + mf3x4, rhoPmp1FuNom, 
+          omega/\[Omega]];
+        If[etaPmp1Fu > etaPmp1FuNom*0.01,
+         mPmp1FuPow = mf2xCh + mfChCool + mf3x4,
+         mPmp1FuPow = mfLeakP1; etaPmp1Fu = 1];
+        If[etaPmp1Fu > 10^-4,
+          torqPmp1Fu = 1/omega*pf2*mPmp1FuPow/(rhoPmp1FuNom*etaPmp1Fu),
+          torqPmp1Fu = 0
+         ];
+        								;(* pumpFu2 *);
+       mfLeakP2 = mLeakFu2Nom*(rpm/rpmNom); 
+       etaPmp2Fu = FuncEtaPmpFu2[mf3x4, rhoPmp2FuNom, omega/\[Omega]];
+       If[etaPmp2Fu > etaPmp2FuNom*0.1,
+        mPmp2FuPow = mf3x4;,
+        mPmp2FuPow = mfLeakP2; etaPmp2Fu = 1;];
+       If[etaPmp2Fu > 10^-4,
+         torqPmp2Fu = 1/omega*pf3*mPmp2FuPow/(rhoPmp2FuNom*etaPmp2Fu),
+         torqPmp2Fu = 0
+        ];
+       								;(* pumpOx *);
+      moLeakP1 = (mLeakOxNom)*(rpm/rpmNom); 
+      etaPmpOx = FuncEtaPmpOx[mo2x3 + mo2xTrbOut, rhoPmpOxNom, omega/\[Omega]];
+       If[etaPmpOx > etaPmpOxNom*0.01,
+       mPmpOxPow = mo2x3 + mo2xTrbOut,
+       mPmpOxPow = moLeakP1; etaPmpOx = 1];
+      If[etaPmpOx > 10^-4,
+        torqPmpOx = 1/omega*po2*mPmpOxPow/(rhoPmpOxNom*etaPmpOx), (* 
+       Момент насоса Subscript[M, но]=(Subscript[P, но]\[CenterDot]Subscript[
+       Overscript[m, .], но])/(\[Omega]\[CenterDot]Subscript[\[Rho], 
+       о]\[CenterDot]Subscript[\[Eta], но]) *)
+        torqPmpOx = 0
+       ];
+      								;(* Trbine *);
+    (* Турбина Основная *);
+    torqTrb = 0;
+    etaTrb = 0;
+    LadTrb = 0; 
+    If[ flagBurnGg == 1 && pTrbIn >= pGv, 
+     	PITrb = pGv/pTrbIn;
+        LadTrb = kGg/(kGg - 1.)*RGg*TGg*(1. - (PITrb)^((kGg - 1.)/kGg));
+        uTrb = Pi*DTrb*omega/\[Omega]/60.;
+               cadTrb = Sqrt[2.*g0*LadTrb];
+     If[cadTrb > 10^-6,
+      etaTrb = FuncEtaTrb[uTrb/cadTrb];
+           If[etaTrb < 0., etaTrb = 0.]
+       ];
+     ];
+    torqTrb = 1/omega*mGv*LadTrb*etaTrb*coefTorqTrb; 	
+    (* Domega *);
+    Domega = (torqTrb - torqPmpOx - torqPmp1Fu - torqPmp2Fu)*g0/JTrbPmp ;
+    		;(* Chamber *);
+   If[flagBurnCh == 1 && flagBurnChSTOP == 0,    
+    	 kmCh = Max[Min[mChOx/mChFu, 99], 1*10^-4];
+    	RCh    = interpROxygenJetaCh[pCh, kmCh]*\[Delta]R;         
+    	TCh    = interpTOxygenJetaCh[pCh, kmCh];               
+    	kCh    = interpKOxygenJetaCh[pCh, kmCh];
+    	mCh = GGAZ[pCh, pEnv, muThCh, aThChcorect, TCh, kCh,  RCh];
+    	DpCh = ((RCh*TCh)/VCh)*(mGv + mo4xIc + mf6xIc + mf2xCh + mfChCool - mCh);,  
+    
+    	mCh = 0;
+    	kmCh = 0;
+    	kCh = 1.4;(*************)
+    	RCh = 287*\[Delta]R;(*************)
+    	TCh = TEnv;
+    	DpCh = 0;
+    ];
+   
+   defCorrection[t];(* ************ *);
+   defConfinesAll[t];
+   defConditionsAll[t];
+   
+   {DxCVf1, DxCVf2, DxCVf3, DxCVf4, DxCVo1,
+    DuCVf1, DuCVf2, DuCVf3, DuCVf4, DuCVo1,
+    Dmasbf, Dmasbo,               
+    Dpf1, Dpf4, Dpf5, Dpf6, Dpf7, DpoB, Dpo1, Dpo3, Dpo4, DpGg, DpGv, DpCh,
+    DmfTx1, Dmf2xCh, Dmf3x4, Dmf4x6, Dmf6xIc, Dmf4x5, Dmf5xIg, DmfBx7, Dmf7x6,
+     Dmf7x5, DmoTx1, Dmo2x3, Dmo3xGg, Dmo2xGg, Dmo3x4, Dmo4xIc, Dmo4xIg, 
+    DmoBx4,
+    DvolVf1xCh, DvolVo1xGg,
+    Domega}
+   }]
+
+In[409]:= defDictForPrint[myDictForSaveResultsTXT]
+
+time1 = AbsoluteTime[];
+
+In[411]:= {torqTrb, torqStTrb, torqPmp1Fu, torqPmp2Fu, torqPmpOx} = {0, 0, 0, 0, 0};
+
+In[412]:= defBreak[t_] := If[t >=  1000, Break[]]
+
+In[413]:= Timing[Monitor[resultPrint = Reap[For[j = 1., j <= n, j++, {
+        iterJ = j;
+        t = TIME;
+        defBreak[t];
+        If[Mod[j - 1, stepPrint] == 0 ,
+         resDictOneStep = defDictForPrint[myDictForSaveResultsTXT];
+         Sow[resDictOneStep];
+         numItemPrint += 1];
+        (*If[t>0.1, Pause[10];Print["*****STOP*****"]];*)
+        iterRunge = 0;
+        y = {
+          xCVf1, xCVf2, xCVf3, xCVf4, xCVo1,
+          uCVf1, uCVf2, uCVf3, uCVf4, uCVo1,    
+          masbf, masbo,               
+          pf1, pf4, pf5, pf6, pf7, poB, po1, po3, po4, pGg, pGv, pCh,
+          mfTx1, mf2xCh, mf3x4, mf4x6, mf6xIc, mf4x5, mf5xIg, mfBx7, mf7x6, 
+          mf7x5, moTx1, mo2x3, mo3xGg, mo2xGg, mo3x4, mo4xIc, mo4xIg, moBx4,
+          volVf1xCh, volVo1xGg,
+          omega
+          };
+        y = SolRungeKutta4[Prav, y, TIME, dt];    (* 
+        Интегрирование методом Рунге-Кутта 4-го порядка *)
+        {
+          xCVf1, xCVf2, xCVf3, xCVf4, xCVo1,
+          uCVf1, uCVf2, uCVf3, uCVf4, uCVo1,    
+          masbf, masbo,               
+          pf1, pf4, pf5, pf6, pf7, poB, po1, po3, po4, pGg, pGv, pCh,
+          mfTx1, mf2xCh, mf3x4, mf4x6, mf6xIc, mf4x5, mf5xIg, mfBx7, mf7x6, 
+          mf7x5, moTx1, mo2x3, mo3xGg, mo2xGg, mo3x4, mo4xIc, mo4xIg, moBx4,
+          volVf1xCh, volVo1xGg,
+          omega
+          } = y;
+        (*If[mode \[Equal] 0,{p1Fu,p2Fu,p3Fu,p5Fu}={p1FuAlg,p2FuAlg,p3FuAlg,
+        p5FuAlg};];*)
+        (*Pause[5];*)
+        defCorrection[t];(* ************ *)
+        defConfinesAll[t];
+        defConditionsAll[t];
+        defTagAndPrint[t];
+        
+        {DxCVf1, DxCVf2, DxCVf3, DxCVf4, DxCVo1} = {uCVf1, uCVf2, uCVf3, 
+          uCVf4, uCVo1};
+        defConditionsAll[t];
+        {uCVf1, uCVf2, uCVf3, uCVf4, uCVo1} = {DxCVf1, DxCVf2, DxCVf3, DxCVf4,
+           DxCVo1};
+        TIME += dt;
+        }]; Print["***END***"]][[2, 1]], {"t=", t // N, " Из:", endTime // N, 
+    " с шагом:", dt,
+     " rpm - ", omega/\[Omega] // N, "  po4  - ", po4, "  mo4xIg  - ", mo4xIg,
+     "  \n***Расчет 1идет уже: ", Quotient[AbsoluteTime[] - time1, 60.], 
+    " m и " , Mod[AbsoluteTime[] - time1, 60.], " c "}
+   ]][[1]]
+
+Out[413]= 63.3594
+
+In[415]:= time2 = AbsoluteTime[];
+Print["Time: ", Quotient[time2 - time1, 60.], " m и " , 
+ Mod[time2 - time1, 60.], " c "]
+
+During evaluation of In[415]:= Time: 2 m и 5.61169 c 
+
+
+
+In[417]:= listNameValve = Import[pathToImportData, {"Data", 3, Range[2, 13], 3}];
+
+In[418]:= {clrVo11, clrVo12} = {RGBColor[1, 0.5, 0.59], 
+   RGBColor[1, 0.5, 0.59](*LightGray*)};
+{clrVo21, clrVo22} = {Cyan, Cyan};
+{clrVo41, clrVo42} = {Orange, Orange};
+{clrVo31, clrVo32} = {RGBColor[0.76, 1., 1.], RGBColor[0.76, 1., 1.]};
+{clrVf11, clrVf12} = {RGBColor[0.76, 1., 0.], RGBColor[0.76, 1., 0.]};
+{clrVf21, clrVf22} = {Yellow, Yellow};
+{clrVf31, clrVf32} = {RGBColor[1, 0, 1], RGBColor[1, 0, 1]};
+
+{clrStrGg , clrStpGg} = { Red, Red};
+{clrStrCh , clrStpCh} = { Green, Green};
+
+In[427]:= tValuesAndColorAssociation = defCreateDictClrTimeTXT [listNameValve];
+tValuesAndColorAssociation = Delete[tValuesAndColorAssociation, "t1"];
+tValuesAndColorAssociation = Delete[tValuesAndColorAssociation, "t2"];
+
+tValuesAssoc = 
+ AssociateTo[
+  tValuesAndColorAssociation, {"strGg" -> {tBurnGg, clrStrGg}, 
+   "stpGg" -> {tStpGg, clrStpGg}, "strCh" -> {tBurnCh, clrStrCh}, 
+   "stpCh" -> {tStpCh, clrStpCh}}]
+
+In[432]:= resultDict = defListDictsToDict [resultPrint];
+result = Sort[defAddKeyToOnePlaceValues[resultDict]];
+
+
+
+In[434]:= pnt =(*1*)-5; 
+TableForm[defRangeDisplayList[Sort[result], pnt, pnt + 4]](*//AccountingForm*)
+
+
+
+In[436]:= defPltOne [result, "rpm"  , 1, Red, Line, 0.004, tValuesAssoc, All, All, 
+ ImageSize -> 800]
