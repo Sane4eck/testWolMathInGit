@@ -186,3 +186,123 @@ def func_filling(
 #     """ приклад """
 #     res = a / b
 #     return res
+
+from numba import njit
+import numpy as np
+
+
+@njit(cache=False)
+def interp1_linear_clamped(x, xp, fp):
+    n = xp.size
+    if n == 0:
+        return 0.0
+    if n == 1:
+        return fp[0]
+
+    if x <= xp[0]:
+        x0 = xp[0]
+        x1 = xp[1]
+        y0 = fp[0]
+        y1 = fp[1]
+    elif x >= xp[n - 1]:
+        x0 = xp[n - 2]
+        x1 = xp[n - 1]
+        y0 = fp[n - 2]
+        y1 = fp[n - 1]
+    else:
+        i = 0
+        while i < n - 1 and not (xp[i] <= x <= xp[i + 1]):
+            i += 1
+        x0 = xp[i]
+        x1 = xp[i + 1]
+        y0 = fp[i]
+        y1 = fp[i + 1]
+
+    dx = x1 - x0
+    if abs(dx) < 1.0e-30:
+        return y0
+    return y0 + (y1 - y0) * (x - x0) / dx
+
+
+@njit(cache=False)
+def interp1_quadratic_local(x, xp, fp):
+    n = xp.size
+    if n < 3:
+        return interp1_linear_clamped(x, xp, fp)
+
+    if x <= xp[1]:
+        i0, i1, i2 = 0, 1, 2
+    elif x >= xp[n - 2]:
+        i0, i1, i2 = n - 3, n - 2, n - 1
+    else:
+        i1 = 1
+        while i1 < n - 1 and not (xp[i1] <= x <= xp[i1 + 1]):
+            i1 += 1
+        i0 = i1 - 1
+        i2 = i1 + 1
+
+    x0, x1, x2 = xp[i0], xp[i1], xp[i2]
+    y0, y1, y2 = fp[i0], fp[i1], fp[i2]
+
+    d01 = x0 - x1
+    d02 = x0 - x2
+    d12 = x1 - x2
+    if abs(d01) < 1.0e-30 or abs(d02) < 1.0e-30 or abs(d12) < 1.0e-30:
+        return interp1_linear_clamped(x, xp, fp)
+
+    l0 = ((x - x1) * (x - x2)) / (d01 * d02)
+    l1 = ((x - x0) * (x - x2)) / ((x1 - x0) * d12)
+    l2 = ((x - x0) * (x - x1)) / ((x2 - x0) * (x2 - x1))
+    return y0 * l0 + y1 * l1 + y2 * l2
+
+
+@njit(cache=False)
+def interp2_bilinear_clamped(x, y, xg, yg, table):
+    nx = xg.size
+    ny = yg.size
+
+    if nx < 2 or ny < 2:
+        return 0.0
+
+    if x <= xg[0]:
+        ix = 0
+    elif x >= xg[nx - 1]:
+        ix = nx - 2
+    else:
+        ix = 0
+        while ix < nx - 1 and not (xg[ix] <= x <= xg[ix + 1]):
+            ix += 1
+
+    if y <= yg[0]:
+        iy = 0
+    elif y >= yg[ny - 1]:
+        iy = ny - 2
+    else:
+        iy = 0
+        while iy < ny - 1 and not (yg[iy] <= y <= yg[iy + 1]):
+            iy += 1
+
+    x0 = xg[ix]
+    x1 = xg[ix + 1]
+    y0 = yg[iy]
+    y1 = yg[iy + 1]
+
+    q00 = table[ix, iy]
+    q10 = table[ix + 1, iy]
+    q01 = table[ix, iy + 1]
+    q11 = table[ix + 1, iy + 1]
+
+    dx = x1 - x0
+    dy = y1 - y0
+    if abs(dx) < 1.0e-30 or abs(dy) < 1.0e-30:
+        return q00
+
+    tx = (x - x0) / dx
+    ty = (y - y0) / dy
+
+    return (
+        q00 * (1.0 - tx) * (1.0 - ty)
+        + q10 * tx * (1.0 - ty)
+        + q01 * (1.0 - tx) * ty
+        + q11 * tx * ty
+    )
