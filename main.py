@@ -4,7 +4,7 @@ import argparse
 import time
 
 ap = argparse.ArgumentParser()
-ap.add_argument("--system", default="sys_wolfram_lp")
+ap.add_argument("--system", default="sys_wolmath")
 ap.add_argument("--excel", default="_1_InitialDataSV3.xlsx")
 ap.add_argument("--dt", type=float, default=1e-7)
 ap.add_argument("--end-time", type=float, default=1.0)
