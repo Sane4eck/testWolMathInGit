@@ -314,7 +314,7 @@ class Params:
     trb_eta_c1: float = 0.0
 
     def as_tuple(self):
-        return np.asarray(astuple(self), dtype=np.float64)
+        return astuple(self)
 
     @classmethod
     def from_excel(cls, path: str):
