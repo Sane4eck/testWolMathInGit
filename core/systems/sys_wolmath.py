@@ -1,5 +1,7 @@
+# core/systems/sys_wolmath.py
 import numpy as np
 from numba import njit
+from dataclasses import dataclass, fields, astuple
 
 from core.physics import (
     ggaz,
@@ -39,157 +41,148 @@ AUX_ORDER = (
 NY = len(Y_ORDER)
 NAUX = len(AUX_ORDER)
 
-I_xCVf1 = 0
-I_xCVf2 = 1
-I_xCVf3 = 2
-I_xCVf4 = 3
-I_xCVo1 = 4
 
-I_uCVf1 = 5
-I_uCVf2 = 6
-I_uCVf3 = 7
-I_uCVf4 = 8
-I_uCVo1 = 9
-
-I_masbf = 10
-I_masbo = 11
-
-I_pf1 = 12
-I_pf4 = 13
-I_pf5 = 14
-I_pf6 = 15
-I_pf7 = 16
-
-I_poB = 17
-I_po1 = 18
-I_po3 = 19
-I_po4 = 20
-
-I_pGg = 21
-I_pGv = 22
-I_pCh = 23
-
-I_mfTx1 = 24
-I_mf2xCh = 25
-I_mf3x4 = 26
-I_mf4x6 = 27
-I_mf6xIc = 28
-I_mf4x5 = 29
-I_mf5xIg = 30
-I_mfBx7 = 31
-I_mf7x6 = 32
-I_mf7x5 = 33
-
-I_moTx1 = 34
-I_mo2x3 = 35
-I_mo3xGg = 36
-I_mo2xGg = 37
-I_mo3x4 = 38
-I_mo4xIc = 39
-I_mo4xIg = 40
-I_moBx4 = 41
-
-I_volVf1xCh = 42
-I_volVo1xGg = 43
-I_omega = 44
-
-A_mGg = 0
-A_mGv = 1
-A_mCh = 2
-A_etaPmpOx = 3
-A_etaPmp1Fu = 4
-A_etaPmp2Fu = 5
-A_etaTrb = 6
-A_torqTrb = 7
-A_torqPmpOx = 8
-A_torqPmp1Fu = 9
-A_torqPmp2Fu = 10
-A_mfChCool = 11
-A_flagFillFu = 12
-A_flagFillOx = 13
-
-
+@dataclass(frozen=True)
 class Params:
-    def __init__(self):
-        # initial conditions
-        self.xCVf1_0 = 0.0
-        self.xCVf2_0 = 0.0
-        self.xCVf3_0 = 0.0
-        self.xCVf4_0 = 0.0
-        self.xCVo1_0 = 0.0
+    # initial conditions
+    xCVf1_0: float = 0.0
+    xCVf2_0: float = 0.0
+    xCVf3_0: float = 0.0
+    xCVf4_0: float = 0.0
+    xCVo1_0: float = 0.0
 
-        self.uCVf1_0 = 0.0
-        self.uCVf2_0 = 0.0
-        self.uCVf3_0 = 0.0
-        self.uCVf4_0 = 0.0
-        self.uCVo1_0 = 0.0
+    uCVf1_0: float = 0.0
+    uCVf2_0: float = 0.0
+    uCVf3_0: float = 0.0
+    uCVf4_0: float = 0.0
+    uCVo1_0: float = 0.0
 
-        self.masbf_0 = 0.0
-        self.masbo_0 = 0.0
+    masbf_0: float = 0.0
+    masbo_0: float = 0.0
 
-        self.pf1_0 = 0.0
-        self.pf4_0 = 0.0
-        self.pf5_0 = 0.0
-        self.pf6_0 = 0.0
-        self.pf7_0 = 0.0
+    pf1_0: float = 0.0
+    pf4_0: float = 0.0
+    pf5_0: float = 0.0
+    pf6_0: float = 0.0
+    pf7_0: float = 0.0
 
-        self.poB_0 = 0.0
-        self.po1_0 = 0.0
-        self.po3_0 = 0.0
-        self.po4_0 = 0.0
+    poB_0: float = 0.0
+    po1_0: float = 0.0
+    po3_0: float = 0.0
+    po4_0: float = 0.0
 
-        self.pGg_0 = 0.0
-        self.pGv_0 = 0.0
-        self.pCh_0 = 0.0
+    pGg_0: float = 0.0
+    pGv_0: float = 0.0
+    pCh_0: float = 0.0
 
-        self.mfTx1_0 = 0.0
-        self.mf2xCh_0 = 0.0
-        self.mf3x4_0 = 0.0
-        self.mf4x6_0 = 0.0
-        self.mf6xIc_0 = 0.0
-        self.mf4x5_0 = 0.0
-        self.mf5xIg_0 = 0.0
-        self.mfBx7_0 = 0.0
-        self.mf7x6_0 = 0.0
-        self.mf7x5_0 = 0.0
+    mfTx1_0: float = 0.0
+    mf2xCh_0: float = 0.0
+    mf3x4_0: float = 0.0
+    mf4x6_0: float = 0.0
+    mf6xIc_0: float = 0.0
+    mf4x5_0: float = 0.0
+    mf5xIg_0: float = 0.0
+    mfBx7_0: float = 0.0
+    mf7x6_0: float = 0.0
+    mf7x5_0: float = 0.0
 
-        self.moTx1_0 = 0.0
-        self.mo2x3_0 = 0.0
-        self.mo3xGg_0 = 0.0
-        self.mo2xGg_0 = 0.0
-        self.mo3x4_0 = 0.0
-        self.mo4xIc_0 = 0.0
-        self.mo4xIg_0 = 0.0
-        self.moBx4_0 = 0.0
+    moTx1_0: float = 0.0
+    mo2x3_0: float = 0.0
+    mo3xGg_0: float = 0.0
+    mo2xGg_0: float = 0.0
+    mo3x4_0: float = 0.0
+    mo4xIc_0: float = 0.0
+    mo4xIg_0: float = 0.0
+    moBx4_0: float = 0.0
 
-        self.volVf1xCh_0 = 0.0
-        self.volVo1xGg_0 = 0.0
-        self.omega_0 = 1.0
+    volVf1xCh_0: float = 0.0
+    volVo1xGg_0: float = 0.0
+    omega_0: float = 1.0
 
-        # shaft / torques
-        self.JTrbPmp = 1.0
-        self.g0 = 1.0
+    # shaft / valve dynamics
+    JTrbPmp: float = 1.0
+    g0: float = 1.0
+    k_xcv: float = 0.0
+    k_ucv: float = 0.0
 
-        # simple valve dynamics coefficients
-        self.k_xcv = 0.0
-        self.k_ucv = 0.0
+    # temporary algebraic refs for the shaft block
+    pf2_ref: float = 0.0
+    pf3_ref: float = 0.0
+    po2_ref: float = 0.0
+    pTrbIn_ref: float = 0.0
+
+    mfChCool_ref: float = 0.0
+    mo2xTrbOut_ref: float = 0.0
+    mGv_ref: float = 0.0
+    flagBurnGg_ref: float = 0.0
+
+    # nominal densities
+    rhoPmp1FuNom: float = 1.0
+    rhoPmp2FuNom: float = 1.0
+    rhoPmpOxNom: float = 1.0
+
+    # nominal efficiencies
+    etaPmp1FuNom: float = 1.0
+    etaPmp2FuNom: float = 1.0
+    etaPmpOxNom: float = 1.0
+
+    # nominal leakage
+    mLeakFu1Nom: float = 0.0
+    mLeakFu2Nom: float = 0.0
+    mLeakOxNom: float = 0.0
+
+    # pump eta curves
+    pmp1_eta_c0: float = 1.0
+    pmp1_eta_c1: float = 1.0
+    pmp1_eta_c2: float = 2.0
+
+    pmp2_eta_c0: float = 1.0
+    pmp2_eta_c1: float = 1.0
+    pmp2_eta_c2: float = 2.0
+
+    pmpOx_eta_c0: float = 1.0
+    pmpOx_eta_c1: float = 1.0
+    pmpOx_eta_c2: float = 2.0
+
+    # turbine
+    trb_eta_c0: float = 1.0
+    trb_eta_c1: float = 0.0
+    kGg: float = 1.4
+    RGg: float = 287.0
+    TGg: float = 300.0
+    DTrb: float = 1.0
+    coefTorqTrb: float = 1.0
+
+    def as_tuple(self):
+        return np.asarray(astuple(self), dtype=np.float64)
 
     @classmethod
     def from_excel(cls, path: str):
-        # тимчасово: щоб система вже запускалась.
-        # Потім підключимо реальне читання Excel.
+        # На цьому етапі лишаємо заглушку.
+        # Далі сюди підключимо реальне читання Excel.
         return cls()
 
-    def as_tuple(self):
-        return np.array([
-            self.JTrbPmp,
-            self.g0,
-            self.k_xcv,
-            self.k_ucv,
-        ], dtype=np.float64)
+
+PARAM_ORDER = tuple(f.name for f in fields(Params))
 
 
-def initial_y(p: Params) -> np.ndarray:
+def _declare_indices():
+    for i, name in enumerate(Y_ORDER):
+        globals()[f"I_{name}"] = i
+    for i, name in enumerate(AUX_ORDER):
+        globals()[f"A_{name}"] = i
+    for i, name in enumerate(PARAM_ORDER):
+        globals()[f"P_{name}"] = i
+
+
+_declare_indices()
+del _declare_indices
+
+
+def initial_y(p: Params | None = None) -> np.ndarray:
+    if p is None:
+        p = Params()
+
     return np.array([
         p.xCVf1_0, p.xCVf2_0, p.xCVf3_0, p.xCVf4_0, p.xCVo1_0,
         p.uCVf1_0, p.uCVf2_0, p.uCVf3_0, p.uCVf4_0, p.uCVo1_0,
@@ -207,18 +200,23 @@ def initial_y(p: Params) -> np.ndarray:
 
 
 @njit(cache=False)
-def clamp_y_inplace(y: np.ndarray):
-    # клапани: хід >= 0
+def clamp_y_inplace(y):
+    limit_m = 1.0e8
+    limit_p = 1.0e9
+    limit_vol = 1.0e9
+
+    # valve lift
     if y[I_xCVf1] < 0.0: y[I_xCVf1] = 0.0
     if y[I_xCVf2] < 0.0: y[I_xCVf2] = 0.0
     if y[I_xCVf3] < 0.0: y[I_xCVf3] = 0.0
     if y[I_xCVf4] < 0.0: y[I_xCVf4] = 0.0
     if y[I_xCVo1] < 0.0: y[I_xCVo1] = 0.0
 
-    # маси, тиски, об'єми
+    # masses
     if y[I_masbf] < 0.0: y[I_masbf] = 0.0
     if y[I_masbo] < 0.0: y[I_masbo] = 0.0
 
+    # pressures
     if y[I_pf1] < 0.0: y[I_pf1] = 0.0
     if y[I_pf4] < 0.0: y[I_pf4] = 0.0
     if y[I_pf5] < 0.0: y[I_pf5] = 0.0
@@ -234,23 +232,108 @@ def clamp_y_inplace(y: np.ndarray):
     if y[I_pGv] < 0.0: y[I_pGv] = 0.0
     if y[I_pCh] < 0.0: y[I_pCh] = 0.0
 
+    # flow limits
+    if y[I_mfTx1] > limit_m: y[I_mfTx1] = limit_m
+    if y[I_mfTx1] < -limit_m: y[I_mfTx1] = -limit_m
+    if y[I_mf2xCh] > limit_m: y[I_mf2xCh] = limit_m
+    if y[I_mf2xCh] < -limit_m: y[I_mf2xCh] = -limit_m
+    if y[I_mf3x4] > limit_m: y[I_mf3x4] = limit_m
+    if y[I_mf3x4] < -limit_m: y[I_mf3x4] = -limit_m
+    if y[I_mf4x6] > limit_m: y[I_mf4x6] = limit_m
+    if y[I_mf4x6] < -limit_m: y[I_mf4x6] = -limit_m
+    if y[I_mf6xIc] > limit_m: y[I_mf6xIc] = limit_m
+    if y[I_mf6xIc] < -limit_m: y[I_mf6xIc] = -limit_m
+    if y[I_mf4x5] > limit_m: y[I_mf4x5] = limit_m
+    if y[I_mf4x5] < -limit_m: y[I_mf4x5] = -limit_m
+    if y[I_mf5xIg] > limit_m: y[I_mf5xIg] = limit_m
+    if y[I_mf5xIg] < -limit_m: y[I_mf5xIg] = -limit_m
+    if y[I_mfBx7] > limit_m: y[I_mfBx7] = limit_m
+    if y[I_mfBx7] < -limit_m: y[I_mfBx7] = -limit_m
+    if y[I_mf7x6] > limit_m: y[I_mf7x6] = limit_m
+    if y[I_mf7x6] < -limit_m: y[I_mf7x6] = -limit_m
+    if y[I_mf7x5] > limit_m: y[I_mf7x5] = limit_m
+    if y[I_mf7x5] < -limit_m: y[I_mf7x5] = -limit_m
+
+    if y[I_moTx1] > limit_m: y[I_moTx1] = limit_m
+    if y[I_moTx1] < -limit_m: y[I_moTx1] = -limit_m
+    if y[I_mo2x3] > limit_m: y[I_mo2x3] = limit_m
+    if y[I_mo2x3] < -limit_m: y[I_mo2x3] = -limit_m
+    if y[I_mo3xGg] > limit_m: y[I_mo3xGg] = limit_m
+    if y[I_mo3xGg] < -limit_m: y[I_mo3xGg] = -limit_m
+    if y[I_mo2xGg] > limit_m: y[I_mo2xGg] = limit_m
+    if y[I_mo2xGg] < -limit_m: y[I_mo2xGg] = -limit_m
+    if y[I_mo3x4] > limit_m: y[I_mo3x4] = limit_m
+    if y[I_mo3x4] < -limit_m: y[I_mo3x4] = -limit_m
+    if y[I_mo4xIc] > limit_m: y[I_mo4xIc] = limit_m
+    if y[I_mo4xIc] < -limit_m: y[I_mo4xIc] = -limit_m
+    if y[I_mo4xIg] > limit_m: y[I_mo4xIg] = limit_m
+    if y[I_mo4xIg] < -limit_m: y[I_mo4xIg] = -limit_m
+    if y[I_moBx4] > limit_m: y[I_moBx4] = limit_m
+    if y[I_moBx4] < -limit_m: y[I_moBx4] = -limit_m
+
+    # volumes
     if y[I_volVf1xCh] < 0.0: y[I_volVf1xCh] = 0.0
     if y[I_volVo1xGg] < 0.0: y[I_volVo1xGg] = 0.0
+    if y[I_volVf1xCh] > limit_vol: y[I_volVf1xCh] = limit_vol
+    if y[I_volVo1xGg] > limit_vol: y[I_volVo1xGg] = limit_vol
 
-    if y[I_omega] < 1.0e-12:
-        y[I_omega] = 1.0e-12
+    # shaft speed
+    if y[I_omega] < 1.0e-12: y[I_omega] = 1.0e-12
 
 
 @njit(cache=False)
-def rhs(t: float, y: np.ndarray, p_arr: np.ndarray, dy: np.ndarray, aux: np.ndarray):
+def rhs(t, y, p, dy, aux):
     clamp_y_inplace(y)
 
-    JTrbPmp = p_arr[0]
-    g0 = p_arr[1]
-    k_xcv = p_arr[2]
-    k_ucv = p_arr[3]
+    # params
+    JTrbPmp = p[P_JTrbPmp]
+    g0 = p[P_g0]
+    k_xcv = p[P_k_xcv]
+    k_ucv = p[P_k_ucv]
 
-    # unpack
+    pf2 = p[P_pf2_ref]
+    pf3 = p[P_pf3_ref]
+    po2 = p[P_po2_ref]
+    pTrbIn = p[P_pTrbIn_ref]
+
+    mfChCool = p[P_mfChCool_ref]
+    mo2xTrbOut = p[P_mo2xTrbOut_ref]
+    mGv_ref = p[P_mGv_ref]
+    flagBurnGg = p[P_flagBurnGg_ref]
+
+    rhoPmp1FuNom = p[P_rhoPmp1FuNom]
+    rhoPmp2FuNom = p[P_rhoPmp2FuNom]
+    rhoPmpOxNom = p[P_rhoPmpOxNom]
+
+    etaPmp1FuNom = p[P_etaPmp1FuNom]
+    etaPmp2FuNom = p[P_etaPmp2FuNom]
+    etaPmpOxNom = p[P_etaPmpOxNom]
+
+    mLeakFu1Nom = p[P_mLeakFu1Nom]
+    mLeakFu2Nom = p[P_mLeakFu2Nom]
+    mLeakOxNom = p[P_mLeakOxNom]
+
+    pmp1_eta_c0 = p[P_pmp1_eta_c0]
+    pmp1_eta_c1 = p[P_pmp1_eta_c1]
+    pmp1_eta_c2 = p[P_pmp1_eta_c2]
+
+    pmp2_eta_c0 = p[P_pmp2_eta_c0]
+    pmp2_eta_c1 = p[P_pmp2_eta_c1]
+    pmp2_eta_c2 = p[P_pmp2_eta_c2]
+
+    pmpOx_eta_c0 = p[P_pmpOx_eta_c0]
+    pmpOx_eta_c1 = p[P_pmpOx_eta_c1]
+    pmpOx_eta_c2 = p[P_pmpOx_eta_c2]
+
+    trb_eta_c0 = p[P_trb_eta_c0]
+    trb_eta_c1 = p[P_trb_eta_c1]
+    kGg = p[P_kGg]
+    RGg = p[P_RGg]
+    TGg = p[P_TGg]
+    DTrb = p[P_DTrb]
+    coefTorqTrb = p[P_coefTorqTrb]
+
+    # unpack y
     xCVf1 = y[I_xCVf1]
     xCVf2 = y[I_xCVf2]
     xCVf3 = y[I_xCVf3]
@@ -263,19 +346,20 @@ def rhs(t: float, y: np.ndarray, p_arr: np.ndarray, dy: np.ndarray, aux: np.ndar
     uCVf4 = y[I_uCVf4]
     uCVo1 = y[I_uCVo1]
 
+    mf2xCh = y[I_mf2xCh]
+    mf3x4 = y[I_mf3x4]
+    mo2x3 = y[I_mo2x3]
+    pGv = y[I_pGv]
     omega = y[I_omega]
 
-    # default
+    # reset outputs
     for i in range(NY):
         dy[i] = 0.0
     for i in range(NAUX):
         aux[i] = 0.0
 
     # -------------------------------------------------
-    # 1. Клапани: перший реальний блок правих частин
-    # У notebook точно є:
-    # DxCV* = uCV*
-    # А DuCV* потім уже підставимо з повної моделі клапанів.
+    # 1. valve kinematics
     # -------------------------------------------------
     DxCVf1 = uCVf1
     DxCVf2 = uCVf2
@@ -283,7 +367,7 @@ def rhs(t: float, y: np.ndarray, p_arr: np.ndarray, dy: np.ndarray, aux: np.ndar
     DxCVf4 = uCVf4
     DxCVo1 = uCVo1
 
-    # поки спрощена форма, щоб система вже була жива
+    # temporary simplified valve dynamics
     DuCVf1 = -k_xcv * xCVf1 - k_ucv * uCVf1
     DuCVf2 = -k_xcv * xCVf2 - k_ucv * uCVf2
     DuCVf3 = -k_xcv * xCVf3 - k_ucv * uCVf3
@@ -291,9 +375,100 @@ def rhs(t: float, y: np.ndarray, p_arr: np.ndarray, dy: np.ndarray, aux: np.ndar
     DuCVo1 = -k_xcv * xCVo1 - k_ucv * uCVo1
 
     # -------------------------------------------------
-    # 2. Інші блоки поки нульові
+    # 2. shaft / pumps / turbine
     # -------------------------------------------------
-    Domega = 0.0
+    eps = 1.0e-12
+    om = omega if omega > eps else eps
+
+    # fuel pump 1
+    mfLeakP1 = mLeakFu1Nom * om
+    etaPmp1Fu = base_pump_eta_m(
+        mf2xCh + mfChCool + mf3x4,
+        rhoPmp1FuNom,
+        om,
+        pmp1_eta_c0, pmp1_eta_c1, pmp1_eta_c2,
+    )
+    if etaPmp1Fu > etaPmp1FuNom * 0.01:
+        mPmp1FuPow = mf2xCh + mfChCool + mf3x4
+    else:
+        mPmp1FuPow = mfLeakP1
+        etaPmp1Fu = 1.0
+
+    if etaPmp1Fu > 1.0e-4 and rhoPmp1FuNom > eps:
+        torqPmp1Fu = pf2 * mPmp1FuPow / (om * rhoPmp1FuNom * etaPmp1Fu)
+    else:
+        torqPmp1Fu = 0.0
+
+    # fuel pump 2
+    mfLeakP2 = mLeakFu2Nom * om
+    etaPmp2Fu = base_pump_eta_m(
+        mf3x4,
+        rhoPmp2FuNom,
+        om,
+        pmp2_eta_c0, pmp2_eta_c1, pmp2_eta_c2,
+    )
+    if etaPmp2Fu > etaPmp2FuNom * 0.1:
+        mPmp2FuPow = mf3x4
+    else:
+        mPmp2FuPow = mfLeakP2
+        etaPmp2Fu = 1.0
+
+    if etaPmp2Fu > 1.0e-4 and rhoPmp2FuNom > eps:
+        torqPmp2Fu = pf3 * mPmp2FuPow / (om * rhoPmp2FuNom * etaPmp2Fu)
+    else:
+        torqPmp2Fu = 0.0
+
+    # oxidizer pump
+    moLeakP1 = mLeakOxNom * om
+    etaPmpOx = base_pump_eta_m(
+        mo2x3 + mo2xTrbOut,
+        rhoPmpOxNom,
+        om,
+        pmpOx_eta_c0, pmpOx_eta_c1, pmpOx_eta_c2,
+    )
+    if etaPmpOx > etaPmpOxNom * 0.01:
+        mPmpOxPow = mo2x3 + mo2xTrbOut
+    else:
+        mPmpOxPow = moLeakP1
+        etaPmpOx = 1.0
+
+    if etaPmpOx > 1.0e-4 and rhoPmpOxNom > eps:
+        torqPmpOx = po2 * mPmpOxPow / (om * rhoPmpOxNom * etaPmpOx)
+    else:
+        torqPmpOx = 0.0
+
+    # turbine
+    mGv = mGv_ref
+    torqTrb = 0.0
+    etaTrb = 0.0
+    LadTrb = 0.0
+
+    if flagBurnGg > 0.5 and pTrbIn > eps and pTrbIn >= pGv and kGg > 1.0:
+        PITrb = pGv / pTrbIn
+        LadTrb = kGg / (kGg - 1.0) * RGg * TGg * (1.0 - PITrb ** ((kGg - 1.0) / kGg))
+        if LadTrb < 0.0:
+            LadTrb = 0.0
+
+        uTrb = np.pi * DTrb * om / 60.0
+        cadTrb = np.sqrt(2.0 * g0 * LadTrb) if LadTrb > 0.0 else 0.0
+
+        if cadTrb > 1.0e-6:
+            etaTrb = base_turb_eta(uTrb / cadTrb, trb_eta_c0, trb_eta_c1)
+            if etaTrb < 0.0:
+                etaTrb = 0.0
+
+        torqTrb = mGv * LadTrb * etaTrb * coefTorqTrb / om
+
+    if JTrbPmp > eps:
+        Domega = (torqTrb - torqPmpOx - torqPmp1Fu - torqPmp2Fu) * g0 / JTrbPmp
+    else:
+        Domega = 0.0
+
+    # -------------------------------------------------
+    # 3. not yet transferred blocks
+    # -------------------------------------------------
+    # masses, pressures, flow rates, chamber/gas-generator filling
+    # stay zero on this stage
 
     # write dy
     dy[I_xCVf1] = DxCVf1
@@ -310,13 +485,26 @@ def rhs(t: float, y: np.ndarray, p_arr: np.ndarray, dy: np.ndarray, aux: np.ndar
 
     dy[I_omega] = Domega
 
+    # write aux
+    aux[A_mGv] = mGv
+    aux[A_etaPmpOx] = etaPmpOx
+    aux[A_etaPmp1Fu] = etaPmp1Fu
+    aux[A_etaPmp2Fu] = etaPmp2Fu
+    aux[A_etaTrb] = etaTrb
+    aux[A_torqTrb] = torqTrb
+    aux[A_torqPmpOx] = torqPmpOx
+    aux[A_torqPmp1Fu] = torqPmp1Fu
+    aux[A_torqPmp2Fu] = torqPmp2Fu
+    aux[A_mfChCool] = mfChCool
+
 
 __all__ = [
-    "Params",
     "Y_ORDER",
     "AUX_ORDER",
     "NY",
     "NAUX",
+    "PARAM_ORDER",
+    "Params",
     "initial_y",
     "clamp_y_inplace",
     "rhs",
