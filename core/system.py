@@ -2,7 +2,9 @@
 import os
 import importlib
 
-DEFAULT_SYSTEM = "sys_C=0"
+# DEFAULT_SYSTEM = "sys_C=0"
+DEFAULT_SYSTEM = "sys_wolmath"
+
 
 def _load_module(name: str):
     return importlib.import_module(f"core.systems.{name}")
