@@ -112,20 +112,70 @@ def calc_coef(value: float, kind: str, units: UnitSystem) -> float | str:
 def load_general_params(path: str | Path, units: UnitSystem) -> dict[str, float]:
     raw = pd.read_excel(path, sheet_name=0, header=None, usecols=[0, 1, 2])
     raw = raw.dropna(how="all")
+
     result: dict[str, float] = {}
+
+    skip_keys = {
+        "",
+        "nan",
+        "name",
+        "parameter",
+        "var",
+    }
+
+    skip_values = {
+        "",
+        "nan",
+        "value",
+        "value si",
+        "value sgs",
+    }
+
+    skip_kinds = {
+        "",
+        "nan",
+        "type",
+        "kind",
+    }
+
     for _, row in raw.iterrows():
-        key = str(row.iloc[0]).strip()
-        if key == "nan":
+        key_raw = row.iloc[0]
+        value_raw = row.iloc[1]
+        kind_raw = row.iloc[2]
+
+        key = str(key_raw).strip()
+        value_text = str(value_raw).strip()
+        kind = str(kind_raw).strip()
+
+        key_l = key.lower()
+        value_l = value_text.lower()
+        kind_l = kind.lower()
+
+        if key_l in skip_keys:
             continue
-        value = float(row.iloc[1])
-        kind = str(row.iloc[2]).strip()
-        converted = calc_coef(value, kind, units)
+        if value_l in skip_values:
+            continue
+        if kind_l in skip_kinds:
+            continue
+
+        if pd.isna(value_raw):
+            continue
+
+        try:
+            if isinstance(value_raw, str):
+                value_raw = value_raw.replace(",", ".").strip()
+            value = float(value_raw)
+        except (TypeError, ValueError):
+            continue
+
+        converted = calc_coef(value, kind_l, units)
         if isinstance(converted, str):
             raise ValueError(f"Unknown parameter type for {key!r}: {kind!r}")
+
         result[key] = converted
         result[f"{key}Nom"] = converted
-    return result
 
+    return result
 
 def load_valve_cyclogram(path: str | Path, units: UnitSystem) -> dict[str, list[float]]:
     raw = pd.read_excel(path, sheet_name=2, header=None)
