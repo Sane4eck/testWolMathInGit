@@ -5,9 +5,12 @@ from dataclasses import dataclass, fields, astuple
 
 from dataclasses import dataclass, fields, astuple, field
 
+import numpy as np
+from numba import njit
+from dataclasses import dataclass, fields, astuple, field
+
 from core.physics import (
     ggaz,
-    linear_law,
     f_valve,
     base_pump_eta_m,
     base_turb_eta,
@@ -40,11 +43,14 @@ Y_ORDER = (
 )
 
 AUX_ORDER = (
-    "pf2_est", "pf3_est", "po2_est", "pTrbIn_est",
-    "etaPmp1Fu", "etaPmp2Fu", "etaPmpOx", "etaTrb",
-    "torqPmp1Fu", "torqPmp2Fu", "torqPmpOx", "torqTrb",
+    "pf2", "pf3", "po2", "pTrbIn",
+    "mfChCool", "mf2xChFill", "mf2xChJet",
+    "mo2xTrbOut", "mo3xTrbIn", "mo2xGgFill", "mo2xGgJet",
+    "HfPmp1", "HfPmp2", "HoPmp",
     "mGg", "mGv", "mCh",
-    "pVapOx", "pVapFu",
+    "etaPmpOx", "etaPmp1Fu", "etaPmp2Fu", "etaTrb",
+    "torqTrb", "torqPmpOx", "torqPmp1Fu", "torqPmp2Fu",
+    "pVapOx", "pVapFu", "rhoFuDyn", "rhoOxDyn",
 )
 
 NY = len(Y_ORDER)
@@ -169,7 +175,6 @@ class Params:
     pv_fu_x: np.ndarray = field(default_factory=lambda: np.array([0.0, 1.0], dtype=np.float64))
     pv_fu_y: np.ndarray = field(default_factory=lambda: np.array([0.0, 0.0], dtype=np.float64))
 
-    # 2D placeholders for next step
     rho_ox_p: np.ndarray = field(default_factory=lambda: np.array([0.0, 1.0], dtype=np.float64))
     rho_ox_t: np.ndarray = field(default_factory=lambda: np.array([0.0, 1.0], dtype=np.float64))
     rho_ox_tab: np.ndarray = field(default_factory=lambda: np.zeros((2, 2), dtype=np.float64))
@@ -191,14 +196,20 @@ class Params:
         allowed = {f.name for f in fields(cls)}
         kwargs = {k: v for k, v in base.items() if k in allowed}
 
-        # 2D tables поки підготуємо заглушками;
-        # конкретні sheet_number / last_row / last_column підставимо наступним кроком.
         kwargs.update(
             pv_ox_x=pv_ox_x,
             pv_ox_y=pv_ox_y,
             pv_fu_x=pv_fu_x,
             pv_fu_y=pv_fu_y,
         )
+
+        # Тут уже підключиш 2D таблиці, коли зафіксуєш їхні sheet/size:
+        # rho_ox_p, rho_ox_t, rho_ox_tab = load_interp2d_arrays(...)
+        # rho_fu_p, rho_fu_t, rho_fu_tab = load_interp2d_arrays(...)
+        # kwargs.update(
+        #     rho_ox_p=rho_ox_p, rho_ox_t=rho_ox_t, rho_ox_tab=rho_ox_tab,
+        #     rho_fu_p=rho_fu_p, rho_fu_t=rho_fu_t, rho_fu_tab=rho_fu_tab,
+        # )
 
         return cls(**kwargs)
 
@@ -298,6 +309,24 @@ def rhs(t, y, p, dy, aux):
 
     pVapOx = interp1_linear_clamped(TEnv, p[P_pv_ox_x], p[P_pv_ox_y])
     pVapFu = interp1_quadratic_local(TEnv, p[P_pv_fu_x], p[P_pv_fu_y])
+
+    rhoFuDyn = rhoFu
+    rhoOxDyn = rhoOx
+
+    if p[P_rho_fu_p].size >= 2 and p[P_rho_fu_t].size >= 2:
+        rhoFuDyn = interp2_bilinear_clamped(pf1, TEnv, p[P_rho_fu_p], p[P_rho_fu_t], p[P_rho_fu_tab])
+
+    if p[P_rho_ox_p].size >= 2 and p[P_rho_ox_t].size >= 2:
+        rhoOxDyn = interp2_bilinear_clamped(po1, TEnv, p[P_rho_ox_p], p[P_rho_ox_t], p[P_rho_ox_tab])
+
+    if rhoFuDyn <= 1.0e-12:
+        rhoFuDyn = rhoFu
+    if rhoOxDyn <= 1.0e-12:
+        rhoOxDyn = rhoOx
+
+    rhoFu = rhoFuDyn
+    rhoOx = rhoOxDyn
+
     # params
     g0 = p[P_g0]
     omega_to_rpm = p[P_omega_to_rpm]
@@ -515,6 +544,11 @@ def rhs(t, y, p, dy, aux):
     aux[A_mCh] = mCh
     aux[A_pVapOx] = pVapOx
     aux[A_pVapFu] = pVapFu
+
+    aux[A_pVapOx] = pVapOx
+    aux[A_pVapFu] = pVapFu
+    aux[A_rhoFuDyn] = rhoFuDyn
+    aux[A_rhoOxDyn] = rhoOxDyn
 
 __all__ = [
     "Y_ORDER",
