@@ -3,6 +3,8 @@ import numpy as np
 from numba import njit
 from dataclasses import dataclass, fields, astuple
 
+from dataclasses import dataclass, fields, astuple, field
+
 from core.physics import (
     ggaz,
     linear_law,
@@ -10,6 +12,16 @@ from core.physics import (
     base_pump_eta_m,
     base_turb_eta,
     base_pump_h,
+    interp1_linear_clamped,
+    interp1_quadratic_local,
+    interp2_bilinear_clamped,
+)
+
+from core.to_utils import (
+    si_or_sgs,
+    load_general_params,
+    load_pressure_vapor_arrays,
+    load_interp2d_arrays,
 )
 
 Y_ORDER = (
@@ -32,6 +44,7 @@ AUX_ORDER = (
     "etaPmp1Fu", "etaPmp2Fu", "etaPmpOx", "etaTrb",
     "torqPmp1Fu", "torqPmp2Fu", "torqPmpOx", "torqTrb",
     "mGg", "mGv", "mCh",
+    "pVapOx", "pVapFu",
 )
 
 NY = len(Y_ORDER)
@@ -151,14 +164,43 @@ class Params:
     muGv: float = 1.0
     fGv1: float = 1.0e-10
 
+    pv_ox_x: np.ndarray = field(default_factory=lambda: np.array([0.0, 1.0], dtype=np.float64))
+    pv_ox_y: np.ndarray = field(default_factory=lambda: np.array([0.0, 0.0], dtype=np.float64))
+    pv_fu_x: np.ndarray = field(default_factory=lambda: np.array([0.0, 1.0], dtype=np.float64))
+    pv_fu_y: np.ndarray = field(default_factory=lambda: np.array([0.0, 0.0], dtype=np.float64))
+
+    # 2D placeholders for next step
+    rho_ox_p: np.ndarray = field(default_factory=lambda: np.array([0.0, 1.0], dtype=np.float64))
+    rho_ox_t: np.ndarray = field(default_factory=lambda: np.array([0.0, 1.0], dtype=np.float64))
+    rho_ox_tab: np.ndarray = field(default_factory=lambda: np.zeros((2, 2), dtype=np.float64))
+
+    rho_fu_p: np.ndarray = field(default_factory=lambda: np.array([0.0, 1.0], dtype=np.float64))
+    rho_fu_t: np.ndarray = field(default_factory=lambda: np.array([0.0, 1.0], dtype=np.float64))
+    rho_fu_tab: np.ndarray = field(default_factory=lambda: np.zeros((2, 2), dtype=np.float64))
+
     def as_tuple(self):
         return astuple(self)
 
     @classmethod
     def from_excel(cls, path: str):
-        # Поки лишаємо stub.
-        # На наступному кроці сюди підключимо реальне читання Excel і таблиць.
-        return cls()
+        units = si_or_sgs("SI")
+
+        base = load_general_params(path, units)
+        pv_ox_x, pv_ox_y, pv_fu_x, pv_fu_y = load_pressure_vapor_arrays(path, units)
+
+        allowed = {f.name for f in fields(cls)}
+        kwargs = {k: v for k, v in base.items() if k in allowed}
+
+        # 2D tables поки підготуємо заглушками;
+        # конкретні sheet_number / last_row / last_column підставимо наступним кроком.
+        kwargs.update(
+            pv_ox_x=pv_ox_x,
+            pv_ox_y=pv_ox_y,
+            pv_fu_x=pv_fu_x,
+            pv_fu_y=pv_fu_y,
+        )
+
+        return cls(**kwargs)
 
 
 PARAM_ORDER = tuple(f.name for f in fields(Params))
@@ -252,7 +294,10 @@ def clamp_y_inplace(y):
 @njit(cache=False)
 def rhs(t, y, p, dy, aux):
     clamp_y_inplace(y)
+    TEnv = p[P_TEnv]
 
+    pVapOx = interp1_linear_clamped(TEnv, p[P_pv_ox_x], p[P_pv_ox_y])
+    pVapFu = interp1_quadratic_local(TEnv, p[P_pv_fu_x], p[P_pv_fu_y])
     # params
     g0 = p[P_g0]
     omega_to_rpm = p[P_omega_to_rpm]
@@ -468,7 +513,8 @@ def rhs(t, y, p, dy, aux):
     aux[A_mGg] = mGg
     aux[A_mGv] = mGv
     aux[A_mCh] = mCh
-
+    aux[A_pVapOx] = pVapOx
+    aux[A_pVapFu] = pVapFu
 
 __all__ = [
     "Y_ORDER",
